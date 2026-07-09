@@ -1,0 +1,651 @@
+'use client'
+
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { createBrowserClient } from '@supabase/ssr'
+
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+type Soal = {
+  id: string
+  judul: string
+  mata_pelajaran: string
+  kelas: string
+  durasi_menit: number
+  jumlah_soal: number
+  acak_soal: boolean
+  deskripsi: string
+  waktu_mulai?: string
+  waktu_selesai?: string
+}
+
+type Pertanyaan = {
+  id: string
+  nomor: number
+  pertanyaan: string
+  gambar_url?: string
+  pilihan_a: string
+  pilihan_b: string
+  pilihan_c: string
+  pilihan_d: string
+  pilihan_e: string
+  bobot: number
+}
+
+// Anti-cheat warning levels
+type WarningLevel = 0 | 1 | 2 | 3
+
+export default function CBTSiswaPage() {
+  const [step, setStep] = useState<'login' | 'pilih' | 'intro' | 'ujian' | 'selesai'>('login')
+  const [nis, setNis] = useState('')
+  const [namaSiswa, setNamaSiswa] = useState('')
+  const [kelas, setKelas] = useState('')
+  const [loginError, setLoginError] = useState('')
+  const [soalList, setSoalList] = useState<Soal[]>([])
+  const [selectedSoal, setSelectedSoal] = useState<Soal | null>(null)
+  const [pertanyaanList, setPertanyaanList] = useState<Pertanyaan[]>([])
+  const [jawaban, setJawaban] = useState<Record<string, string>>({})
+  const [raguList, setRaguList] = useState<Set<string>>(new Set())
+  const [currentNo, setCurrentNo] = useState(0)
+  const [sisa, setSisa] = useState(0)
+  const [hasilId, setHasilId] = useState('')
+  const [nilaiAkhir, setNilaiAkhir] = useState(0)
+  const [jumlahBenar, setJumlahBenar] = useState(0)
+
+  // Anti-cheat state
+  const [warningLevel, setWarningLevel] = useState<WarningLevel>(0)
+  const [warningMsg, setWarningMsg] = useState('')
+  const [showWarning, setShowWarning] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [cheating, setCheating] = useState(false)
+
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const warningTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const submitRef = useRef<(() => void) | null>(null)
+
+  // ====== ANTI-CHEAT FUNCTIONS ======
+  const triggerWarning = useCallback((level: WarningLevel, msg: string) => {
+    setWarningLevel(level)
+    setWarningMsg(msg)
+    setShowWarning(true)
+    if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current)
+    if (level < 3) {
+      warningTimeoutRef.current = setTimeout(() => setShowWarning(false), 4000)
+    }
+    // Vibrasi di HP
+    if (navigator.vibrate) {
+      if (level === 1) navigator.vibrate([200])
+      if (level === 2) navigator.vibrate([300, 100, 300])
+      if (level === 3) navigator.vibrate([500, 200, 500, 200, 500])
+    }
+  }, [])
+
+  const requestFullscreen = useCallback(() => {
+    const el = document.documentElement
+    if (el.requestFullscreen) el.requestFullscreen()
+    else if ((el as any).webkitRequestFullscreen) (el as any).webkitRequestFullscreen()
+    setIsFullscreen(true)
+  }, [])
+
+  // Setup anti-cheat saat ujian dimulai
+  useEffect(() => {
+    if (step !== 'ujian') return
+
+    let tabSwitchCount = 0
+    let copyAttempts = 0
+
+    // Tab/window visibility change
+    const handleVisibility = () => {
+      if (document.hidden) {
+        tabSwitchCount++
+        if (tabSwitchCount === 1) {
+          triggerWarning(1, '⚠️ Peringatan 1: Jangan berpindah tab atau aplikasi lain!')
+        } else if (tabSwitchCount === 2) {
+          triggerWarning(2, '🚨 Peringatan 2: Terdeteksi berpindah tab! Sekali lagi ujian akan disubmit otomatis!')
+        } else {
+          triggerWarning(3, '🔴 Ujian disubmit otomatis karena terdeteksi kecurangan!')
+          setCheating(true)
+          setTimeout(() => submitRef.current?.(), 2000)
+        }
+      }
+    }
+
+    // Copy paste prevention
+    const handleCopy = (e: ClipboardEvent) => {
+      e.preventDefault()
+      copyAttempts++
+      triggerWarning(1, '⚠️ Copy-paste tidak diizinkan selama ujian!')
+    }
+    const handlePaste = (e: ClipboardEvent) => { e.preventDefault() }
+    const handleCut = (e: ClipboardEvent) => { e.preventDefault() }
+
+    // Right click prevention
+    const handleRightClick = (e: MouseEvent) => {
+      e.preventDefault()
+      triggerWarning(1, '⚠️ Klik kanan tidak diizinkan selama ujian!')
+    }
+
+    // Keyboard shortcut prevention
+    const handleKeydown = (e: KeyboardEvent) => {
+      // Block F12, Ctrl+Shift+I, Ctrl+U, Ctrl+S, Alt+Tab, F11
+      if (
+        e.key === 'F12' ||
+        (e.ctrlKey && e.shiftKey && ['I','J','C'].includes(e.key)) ||
+        (e.ctrlKey && ['u','U','s','S','p','P'].includes(e.key)) ||
+        (e.altKey && e.key === 'Tab') ||
+        e.key === 'PrintScreen'
+      ) {
+        e.preventDefault()
+        triggerWarning(1, '⚠️ Shortcut keyboard tidak diizinkan selama ujian!')
+      }
+    }
+
+    // Fullscreen change detection
+    const handleFullscreenChange = () => {
+      const isFS = !!(document.fullscreenElement || (document as any).webkitFullscreenElement)
+      setIsFullscreen(isFS)
+      if (!isFS && step === 'ujian') {
+        triggerWarning(2, '🚨 Fullscreen dinonaktifkan! Klik tombol di bawah untuk kembali ke fullscreen.')
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibility)
+    document.addEventListener('copy', handleCopy)
+    document.addEventListener('paste', handlePaste)
+    document.addEventListener('cut', handleCut)
+    document.addEventListener('contextmenu', handleRightClick)
+    document.addEventListener('keydown', handleKeydown)
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      document.removeEventListener('copy', handleCopy)
+      document.removeEventListener('paste', handlePaste)
+      document.removeEventListener('cut', handleCut)
+      document.removeEventListener('contextmenu', handleRightClick)
+      document.removeEventListener('keydown', handleKeydown)
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
+    }
+  }, [step, triggerWarning])
+
+  // Login siswa
+  const handleLogin = async () => {
+    setLoginError('')
+    if (!nis) { setLoginError('NIS wajib diisi'); return }
+    const { data } = await supabase.from('siswa').select('*').eq('nis', nis).single()
+    if (!data) { setLoginError('NIS tidak ditemukan. Hubungi guru jika ada masalah.'); return }
+    setNamaSiswa(data.nama)
+    setKelas(data.kelas)
+    const { data: soalData } = await supabase.from('soal_cbt').select('*')
+      .eq('status', 'Aktif').eq('kelas', data.kelas).order('created_at', { ascending: false })
+    setSoalList(soalData || [])
+    setStep('pilih')
+  }
+
+  const handlePilihSoal = async (soal: Soal) => {
+    const { data: existing } = await supabase.from('hasil_cbt')
+      .select('*').eq('soal_id', soal.id).eq('nis', nis).single()
+    if (existing?.status === 'Selesai') {
+      alert('Kamu sudah menyelesaikan ujian ini!')
+      return
+    }
+    setSelectedSoal(soal)
+    let { data: pertanyaan } = await supabase.from('pertanyaan_cbt')
+      .select('*').eq('soal_id', soal.id).order('nomor')
+    if (soal.acak_soal && pertanyaan) {
+      pertanyaan = [...pertanyaan].sort(() => Math.random() - 0.5).map((p, i) => ({ ...p, nomor: i + 1 }))
+    }
+    setPertanyaanList(pertanyaan || [])
+    if (existing?.jawaban) setJawaban(existing.jawaban)
+    setHasilId(existing?.id || '')
+    setStep('intro')
+  }
+
+  const handleMulaiUjian = async () => {
+    if (!selectedSoal) return
+    // Request fullscreen
+    requestFullscreen()
+    setSisa(selectedSoal.durasi_menit * 60)
+    setCurrentNo(0)
+    setJawaban({})
+    setRaguList(new Set())
+    setWarningLevel(0)
+    setCheating(false)
+
+    const { data } = await supabase.from('hasil_cbt').upsert({
+      soal_id: selectedSoal.id, nis, nama_siswa: namaSiswa, kelas,
+      status: 'Berlangsung', waktu_mulai: new Date().toISOString(), jawaban: {}
+    }, { onConflict: 'soal_id,nis' }).select().single()
+    if (data) setHasilId(data.id)
+    setStep('ujian')
+  }
+
+  // Submit ujian
+  const handleSubmit = useCallback(async () => {
+    if (timerRef.current) clearInterval(timerRef.current)
+    if (!selectedSoal || !hasilId) return
+
+    // Exit fullscreen
+    if (document.exitFullscreen) document.exitFullscreen()
+
+    let benar = 0; let totalBobot = 0
+    const { data: kunciData } = await supabase.from('pertanyaan_cbt')
+      .select('id, kunci_jawaban, bobot').eq('soal_id', selectedSoal.id)
+    kunciData?.forEach(k => {
+      totalBobot += k.bobot
+      if (jawaban[k.id] === k.kunci_jawaban) benar += k.bobot
+    })
+    const salah = pertanyaanList.length - benar
+    const nilai = totalBobot > 0 ? Math.round((benar / totalBobot) * 100) : 0
+
+    setJumlahBenar(benar)
+    setNilaiAkhir(nilai)
+
+    await supabase.from('hasil_cbt').update({
+      jawaban, nilai, benar, salah,
+      status: 'Selesai', waktu_selesai: new Date().toISOString()
+    }).eq('id', hasilId)
+
+    setStep('selesai')
+  }, [selectedSoal, hasilId, jawaban, pertanyaanList])
+
+  // Store submit ref untuk anti-cheat
+  useEffect(() => { submitRef.current = handleSubmit }, [handleSubmit])
+
+  // Timer
+  useEffect(() => {
+    if (step !== 'ujian') return
+    timerRef.current = setInterval(() => {
+      setSisa(prev => {
+        if (prev <= 1) { handleSubmit(); return 0 }
+        // Auto-save jawaban setiap 30 detik
+        if (prev % 30 === 0 && hasilId) {
+          supabase.from('hasil_cbt').update({ jawaban }).eq('id', hasilId)
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [step, handleSubmit, hasilId, jawaban])
+
+  const formatWaktu = (s: number) => {
+    const m = Math.floor(s / 60)
+    const sec = s % 60
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+  }
+
+  const toggleRagu = (id: string) => {
+    setRaguList(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+
+  const p = pertanyaanList[currentNo]
+  const persen = pertanyaanList.length > 0 ? Math.round((Object.keys(jawaban).length / pertanyaanList.length) * 100) : 0
+  const kual = nilaiAkhir >= 90 ? 'A' : nilaiAkhir >= 80 ? 'B' : nilaiAkhir >= 70 ? 'C' : 'D'
+  const kualLabel = nilaiAkhir >= 90 ? 'Sangat Baik' : nilaiAkhir >= 80 ? 'Baik' : nilaiAkhir >= 70 ? 'Cukup' : 'Perlu Perbaikan'
+  const kualColor = nilaiAkhir >= 90 ? 'text-green-600' : nilaiAkhir >= 80 ? 'text-blue-600' : nilaiAkhir >= 70 ? 'text-yellow-600' : 'text-red-600'
+
+  // ====== LOGIN ======
+  if (step === 'login') return (
+    <div className="min-h-screen bg-gradient-to-br from-[#1a3a6b] to-[#2d5a9e] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm">
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 bg-[#1a3a6b] rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
+            <span className="text-white font-bold text-2xl">36</span>
+          </div>
+          <h1 className="text-xl font-bold text-gray-800">SMPN 36 Bandung</h1>
+          <p className="text-gray-500 text-sm mt-1">Computer Based Test</p>
+        </div>
+        <div className="mb-4">
+          <label className="text-xs font-semibold text-gray-500 mb-1 block">NIS / No. Induk Siswa</label>
+          <input type="text" value={nis} onChange={e => setNis(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            placeholder="Masukkan NIS kamu"
+            className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        {loginError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
+            <p className="text-red-600 text-xs">{loginError}</p>
+          </div>
+        )}
+        <button onClick={handleLogin}
+          className="w-full py-3 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-xl font-semibold transition shadow-md">
+          Masuk →
+        </button>
+        <p className="text-center text-xs text-gray-400 mt-4">Hubungi guru jika NIS tidak ditemukan</p>
+      </div>
+    </div>
+  )
+
+  // ====== PILIH SOAL ======
+  if (step === 'pilih') return (
+    <div className="min-h-screen bg-gray-50 p-4">
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white rounded-2xl p-5 mb-5 border border-gray-200 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold text-sm">
+              {namaSiswa.charAt(0)}
+            </div>
+            <div>
+              <p className="font-semibold text-gray-800">{namaSiswa}</p>
+              <p className="text-xs text-gray-500">{kelas} · NIS: {nis}</p>
+            </div>
+          </div>
+        </div>
+
+        <h2 className="font-bold text-gray-800 mb-3 px-1">Ujian Tersedia</h2>
+        {soalList.length === 0 ? (
+          <div className="bg-white rounded-2xl p-12 text-center border border-gray-200">
+            <div className="text-4xl mb-3">📭</div>
+            <p className="text-gray-500 font-medium">Tidak ada ujian aktif saat ini</p>
+            <p className="text-xs text-gray-400 mt-1">Tunggu instruksi dari guru</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {soalList.map(s => (
+              <button key={s.id} onClick={() => handlePilihSoal(s)}
+                className="w-full bg-white rounded-2xl p-5 border border-gray-200 hover:border-blue-300 hover:shadow-md transition text-left group">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={`px-2 py-0.5 rounded-lg text-xs font-medium ${s.mata_pelajaran === 'Informatika' ? 'bg-purple-50 text-purple-700' : 'bg-teal-50 text-teal-700'}`}>
+                        {s.mata_pelajaran}
+                      </span>
+                      <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                      <span className="text-xs text-green-600 font-medium">Aktif</span>
+                    </div>
+                    <p className="font-semibold text-gray-800 mb-1">{s.judul}</p>
+                    <p className="text-xs text-gray-500">⏱️ {s.durasi_menit} menit · 📝 {s.jumlah_soal} soal · {s.acak_soal ? '🔀 Acak' : '📋 Urut'}</p>
+                  </div>
+                  <svg className="w-5 h-5 text-gray-300 group-hover:text-blue-500 transition flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  // ====== INTRO ======
+  if (step === 'intro') return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full border border-gray-200">
+        <div className="text-center mb-5">
+          <div className="text-3xl mb-2">📝</div>
+          <h2 className="text-xl font-bold text-gray-800">{selectedSoal?.judul}</h2>
+          <p className="text-sm text-gray-500 mt-1">{selectedSoal?.mata_pelajaran} · {selectedSoal?.kelas}</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          {[
+            { icon: '⏱️', label: 'Durasi', val: `${selectedSoal?.durasi_menit} menit` },
+            { icon: '📝', label: 'Jumlah Soal', val: `${pertanyaanList.length} soal` },
+            { icon: '🔀', label: 'Urutan', val: selectedSoal?.acak_soal ? 'Diacak' : 'Berurutan' },
+            { icon: '✅', label: 'Tipe', val: 'Pilihan Ganda' },
+          ].map(i => (
+            <div key={i.label} className="bg-gray-50 rounded-xl p-3 text-center">
+              <p className="text-xl mb-1">{i.icon}</p>
+              <p className="text-xs text-gray-500">{i.label}</p>
+              <p className="text-sm font-semibold text-gray-800">{i.val}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Tata tertib */}
+        <div className="bg-red-50 border border-red-100 rounded-xl p-4 mb-5">
+          <p className="font-semibold text-red-700 text-sm mb-2">🚨 Tata Tertib Ujian:</p>
+          <ul className="space-y-1 text-xs text-red-600">
+            <li>• Ujian akan berjalan dalam mode <strong>layar penuh</strong></li>
+            <li>• Dilarang berpindah tab atau aplikasi lain</li>
+            <li>• Dilarang copy-paste dan klik kanan</li>
+            <li>• Pelanggaran akan dicatat dan ujian dapat disubmit otomatis</li>
+            <li>• Pastikan koneksi internet stabil sebelum mulai</li>
+          </ul>
+        </div>
+
+        <div className="bg-blue-50 rounded-xl p-3 mb-5">
+          <p className="text-xs text-blue-700 text-center">
+            💡 Dengan mengklik "Mulai Ujian", kamu menyetujui tata tertib di atas
+          </p>
+        </div>
+
+        <button onClick={handleMulaiUjian}
+          className="w-full py-3 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-xl font-semibold transition shadow-md">
+          Mulai Ujian (Layar Penuh) →
+        </button>
+      </div>
+    </div>
+  )
+
+  // ====== UJIAN ======
+  if (step === 'ujian' && p) return (
+    <div className="min-h-screen bg-gray-50 select-none" style={{ userSelect: 'none' }}>
+
+      {/* Warning Overlay */}
+      {showWarning && (
+        <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none
+          ${warningLevel === 3 ? 'bg-red-900/80' : 'bg-black/40'}`}>
+          <div className={`rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl pointer-events-auto
+            ${warningLevel === 1 ? 'bg-yellow-50 border-2 border-yellow-400' :
+              warningLevel === 2 ? 'bg-orange-50 border-2 border-orange-500' :
+              'bg-red-50 border-2 border-red-600'}`}>
+            <p className="text-2xl mb-2">{warningLevel === 1 ? '⚠️' : warningLevel === 2 ? '🚨' : '🔴'}</p>
+            <p className={`font-bold text-sm mb-2 ${warningLevel === 1 ? 'text-yellow-800' : warningLevel === 2 ? 'text-orange-800' : 'text-red-800'}`}>
+              {warningMsg}
+            </p>
+            {warningLevel === 2 && (
+              <button onClick={requestFullscreen}
+                className="mt-2 px-4 py-2 bg-orange-500 text-white rounded-lg text-xs font-semibold">
+                Kembali ke Layar Penuh
+              </button>
+            )}
+            {warningLevel < 3 && (
+              <button onClick={() => setShowWarning(false)}
+                className="mt-2 ml-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold">
+                Mengerti
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen reminder */}
+      {!isFullscreen && (
+        <div className="fixed top-0 left-0 right-0 z-40 bg-orange-500 text-white text-center py-2 px-4 text-xs font-medium">
+          ⚠️ Mode layar penuh tidak aktif.
+          <button onClick={requestFullscreen} className="ml-2 underline font-bold">Klik di sini untuk mengaktifkan</button>
+        </div>
+      )}
+
+      {/* Top Bar */}
+      <div className={`bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky z-10 shadow-sm ${!isFullscreen ? 'top-8' : 'top-0'}`}>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-gray-500 truncate">{namaSiswa} · {kelas}</p>
+          <p className="text-sm font-semibold text-gray-800 truncate">{selectedSoal?.judul}</p>
+        </div>
+
+        {/* Warning indicators */}
+        <div className="flex items-center gap-2 mx-3">
+          {warningLevel > 0 && (
+            <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium
+              ${warningLevel === 1 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+              ⚠️ {warningLevel}x
+            </div>
+          )}
+        </div>
+
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl font-bold text-sm flex-shrink-0
+          ${sisa < 60 ? 'bg-red-100 text-red-600 animate-pulse' : sisa < 300 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
+          ⏱️ {formatWaktu(sisa)}
+        </div>
+      </div>
+
+      <div className="max-w-3xl mx-auto p-4">
+        {/* Progress */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex-1 bg-gray-200 rounded-full h-2">
+            <div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: `${persen}%` }} />
+          </div>
+          <span className="text-xs text-gray-500 flex-shrink-0">{Object.keys(jawaban).length}/{pertanyaanList.length} dijawab</span>
+        </div>
+
+        {/* Soal */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-4 shadow-sm">
+          <div className="flex items-start gap-3 mb-5">
+            <span className="w-9 h-9 bg-[#1a3a6b] text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 shadow-md">
+              {currentNo + 1}
+            </span>
+            <div className="flex-1">
+              <p className="text-gray-800 font-medium leading-relaxed">{p.pertanyaan}</p>
+              {/* Gambar soal */}
+              {p.gambar_url && (
+                <div className="mt-3">
+                  <img
+                    src={p.gambar_url}
+                    alt="Gambar soal"
+                    className="max-h-64 max-w-full rounded-xl border border-gray-200 object-contain"
+                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {['a', 'b', 'c', 'd', 'e'].map(opt => {
+              const val = (p as any)[`pilihan_${opt}`]
+              if (!val) return null
+              const isSelected = jawaban[p.id] === opt.toUpperCase()
+              return (
+                <button key={opt} onClick={() => setJawaban(prev => ({ ...prev, [p.id]: opt.toUpperCase() }))}
+                  className={`w-full flex items-center gap-3 p-3.5 rounded-xl border-2 text-left transition active:scale-[0.98]
+                    ${isSelected
+                      ? 'border-blue-500 bg-blue-50 shadow-sm'
+                      : 'border-gray-100 hover:border-gray-300 hover:bg-gray-50'}`}>
+                  <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 transition
+                    ${isSelected ? 'bg-blue-500 text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}>
+                    {opt.toUpperCase()}
+                  </span>
+                  <span className={`text-sm leading-relaxed ${isSelected ? 'text-blue-800 font-medium' : 'text-gray-700'}`}>{val}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          <button onClick={() => toggleRagu(p.id)}
+            className={`mt-4 flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-lg transition
+              ${raguList.has(p.id) ? 'bg-yellow-100 text-yellow-700 border border-yellow-300' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+            🚩 {raguList.has(p.id) ? '✓ Ditandai ragu-ragu (klik untuk hapus)' : 'Tandai ragu-ragu'}
+          </button>
+        </div>
+
+        {/* Navigasi */}
+        <div className="flex items-center justify-between mb-4">
+          <button onClick={() => setCurrentNo(n => Math.max(0, n - 1))} disabled={currentNo === 0}
+            className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition">
+            ← Sebelumnya
+          </button>
+          <span className="text-sm text-gray-500 font-medium">{currentNo + 1} / {pertanyaanList.length}</span>
+          {currentNo < pertanyaanList.length - 1 ? (
+            <button onClick={() => setCurrentNo(n => Math.min(pertanyaanList.length - 1, n + 1))}
+              className="px-4 py-2.5 bg-[#1a3a6b] text-white rounded-xl text-sm font-medium hover:bg-[#15305a] transition shadow-md">
+              Selanjutnya →
+            </button>
+          ) : (
+            <button onClick={() => {
+              const belumDijawab = pertanyaanList.length - Object.keys(jawaban).length
+              if (belumDijawab > 0 && !confirm(`Masih ada ${belumDijawab} soal belum dijawab. Yakin ingin submit?`)) return
+              handleSubmit()
+            }}
+              className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-bold transition shadow-md">
+              ✅ Submit Ujian
+            </button>
+          )}
+        </div>
+
+        {/* Grid nomor soal */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+          <p className="text-xs font-semibold text-gray-500 mb-3">Navigasi Soal</p>
+          <div className="flex flex-wrap gap-2">
+            {pertanyaanList.map((q, i) => (
+              <button key={q.id} onClick={() => setCurrentNo(i)}
+                className={`w-9 h-9 rounded-lg text-xs font-semibold transition active:scale-95
+                  ${i === currentNo ? 'bg-[#1a3a6b] text-white shadow-md' :
+                    raguList.has(q.id) ? 'bg-yellow-200 text-yellow-800 border border-yellow-400' :
+                    jawaban[q.id] ? 'bg-green-100 text-green-700 border border-green-300' :
+                    'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                {i + 1}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-gray-100">
+            {[
+              { color: 'bg-green-100 border border-green-300', label: 'Dijawab' },
+              { color: 'bg-yellow-200 border border-yellow-400', label: 'Ragu-ragu' },
+              { color: 'bg-gray-100', label: 'Belum dijawab' },
+              { color: 'bg-[#1a3a6b]', label: 'Soal ini' },
+            ].map(l => (
+              <div key={l.label} className="flex items-center gap-1.5">
+                <div className={`w-4 h-4 rounded ${l.color}`} />
+                <span className="text-xs text-gray-500">{l.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
+  // ====== SELESAI ======
+  if (step === 'selesai') return (
+    <div className="min-h-screen bg-gradient-to-br from-[#1a3a6b] to-[#2d5a9e] flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center">
+        <div className="text-5xl mb-4">{cheating ? '⚠️' : nilaiAkhir >= 70 ? '🎉' : '📚'}</div>
+        <h2 className="text-xl font-bold text-gray-800 mb-1">
+          {cheating ? 'Ujian Disubmit Otomatis' : 'Ujian Selesai!'}
+        </h2>
+        <p className="text-sm text-gray-500 mb-1">{selectedSoal?.judul}</p>
+        <p className="text-xs text-gray-400 mb-6">{namaSiswa} · {kelas}</p>
+
+        {cheating && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-xs text-red-700">
+            Ujian disubmit otomatis karena terdeteksi pelanggaran tata tertib.
+          </div>
+        )}
+
+        <div className={`text-6xl font-black mb-2 ${kualColor}`}>{nilaiAkhir}</div>
+        <div className={`text-base font-bold mb-1 ${kualColor}`}>{kual} — {kualLabel}</div>
+        <p className="text-xs text-gray-500 mb-6">✅ {jumlahBenar} benar · ❌ {pertanyaanList.length - jumlahBenar} salah dari {pertanyaanList.length} soal</p>
+
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          {[
+            { label: 'Nilai', val: nilaiAkhir, color: kualColor },
+            { label: 'Benar', val: jumlahBenar, color: 'text-green-600' },
+            { label: 'Salah', val: pertanyaanList.length - jumlahBenar, color: 'text-red-500' },
+          ].map(s => (
+            <div key={s.label} className="bg-gray-50 rounded-xl p-3">
+              <p className={`text-xl font-bold ${s.color}`}>{s.val}</p>
+              <p className="text-xs text-gray-500">{s.label}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className={`rounded-xl p-4 mb-4 ${nilaiAkhir >= 70 ? 'bg-green-50 border border-green-100' : 'bg-orange-50 border border-orange-100'}`}>
+          <p className={`text-sm font-semibold ${nilaiAkhir >= 70 ? 'text-green-700' : 'text-orange-700'}`}>
+            {nilaiAkhir >= 70 ? '✅ Selamat! Nilai kamu di atas KKM (70)' : '📖 Nilai di bawah KKM. Semangat belajar lagi!'}
+          </p>
+        </div>
+
+        <p className="text-xs text-gray-400">Nilai sudah tercatat. Terima kasih telah mengerjakan dengan jujur! 🙏</p>
+      </div>
+    </div>
+  )
+
+  return null
+}
