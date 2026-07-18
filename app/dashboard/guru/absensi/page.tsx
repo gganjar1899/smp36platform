@@ -246,7 +246,8 @@ export default function AbsensiPage() {
               Tandai semua Hadir
             </button>
           </div>
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[600px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 w-10">No</th>
@@ -274,7 +275,7 @@ export default function AbsensiPage() {
                         <button
                           key={opt.kode}
                           onClick={() => setStatus(siswa.id, opt.kode as any)}
-                          className={`w-8 h-8 rounded-lg text-xs font-bold transition-all border ${
+                          className={`w-7 h-7 md:w-8 md:h-8 rounded-lg text-xs font-bold transition-all border flex-shrink-0 ${
                             absensi[siswa.id] === opt.kode
                               ? `${opt.bg} text-white border-transparent shadow-sm scale-110`
                               : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300 hover:text-gray-600'
@@ -290,9 +291,10 @@ export default function AbsensiPage() {
               ))}
             </tbody>
           </table>
+          </div>
 
           {/* Action Bar */}
-          <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
+          <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between flex-wrap gap-3 bg-gray-50/50">
             <div>
               {message && (
                 <p className={`text-sm font-medium ${message.type === 'success' ? 'text-emerald-600' : 'text-red-500'}`}>

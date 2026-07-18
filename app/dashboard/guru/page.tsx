@@ -66,6 +66,7 @@ export default function GuruDashboard() {
 
   const quickMenu = [
     { href: '/dashboard/guru/absensi',     label: 'Input Absensi',  desc: 'Catat kehadiran siswa',       color: 'bg-blue-500',   icon: '✓'  },
+    { href: '/dashboard/guru/jurnal',      label: 'Jurnal Mengajar',desc: 'Catat kegiatan pembelajaran',  color: 'bg-emerald-600',icon: '📔' },
     { href: '/dashboard/guru/materi',      label: 'Upload Materi',  desc: 'Bagikan bahan ajar',           color: 'bg-green-500',  icon: '📄' },
     { href: '/dashboard/guru/dokumen-ajar',label: 'Dokumen Ajar',   desc: 'Modul & RPP digital',          color: 'bg-purple-500', icon: '📁' },
     { href: '/dashboard/guru/bank-soal',   label: 'Bank Soal',      desc: 'Kelola soal CBT',              color: 'bg-amber-500',  icon: '📝' },
