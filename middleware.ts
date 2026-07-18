@@ -4,7 +4,9 @@ const PUBLIC_PATHS = [
   '/login',
   '/api/auth/login',
   '/api/auth/logout',
-  '/cbt',  // ← CBT siswa: akses publik pakai NIS
+  '/api/auth/me',    // ← tambah ini! biar bisa dicall dari client
+  '/cbt',
+  '/belajar',
 ]
 
 export function middleware(request: NextRequest) {
