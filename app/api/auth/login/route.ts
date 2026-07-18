@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       path:     '/',
     })
 
-    response.cookies.set('smpn36_user_nama', encodeURIComponent(user.nama), {
+    response.cookies.set('smpn36_user_nama', user.nama, {
       httpOnly: false,
       secure:   process.env.NODE_ENV === 'production',
       sameSite: 'lax',

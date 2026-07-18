@@ -47,11 +47,18 @@ export default function AbsensiPage() {
   const [saving, setSaving]             = useState(false)
   const [message, setMessage]           = useState<{type: 'success'|'error', text: string} | null>(null)
 
-  // Ambil user login
+  // Ambil user login (app ini pakai cookie custom + /api/auth/me, bukan Supabase Auth)
   useEffect(() => {
     const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) setGuruId(user.id)
+      try {
+        const res = await fetch('/api/auth/me')
+        const data = await res.json()
+        if (data.loggedIn && data.role === 'guru' && data.userId) {
+          setGuruId(data.userId)
+        }
+      } catch {
+        // biarkan guruId kosong, form akan tampil "pilih kelas" kosong
+      }
     }
     getUser()
   }, [])
@@ -82,16 +89,20 @@ export default function AbsensiPage() {
     const fetch = async () => {
       setLoading(true)
       const { data } = await supabase
-        .from('users')
-        .select('id, nama, nisn')
+        .from('siswa_kelas')
+        .select('users(id, nama, nisn)')
         .eq('kelas_id', selectedKelas)
-        .eq('role', 'siswa')
-        .order('nama')
+        .eq('tahun_ajaran', '2026/2027')
+        .eq('status', 'aktif')
 
       if (data) {
-        setSiswaList(data)
+        const siswa = (data as any[])
+          .map(r => r.users)
+          .filter(Boolean)
+          .sort((a, b) => a.nama.localeCompare(b.nama)) as Siswa[]
+        setSiswaList(siswa)
         const def: AbsensiStatus = {}
-        data.forEach((s: Siswa) => { def[s.id] = 'H' })
+        siswa.forEach((s: Siswa) => { def[s.id] = 'H' })
         setAbsensi(def)
       }
       setLoading(false)

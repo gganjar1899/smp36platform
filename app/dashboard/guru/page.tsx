@@ -20,35 +20,45 @@ export default function GuruDashboard() {
   })
 
   useEffect(() => {
-    // Fix: decode nama dari cookie
-    const namaCookie = document.cookie.split('; ')
-      .find(r => r.startsWith('smpn36_user_nama='))?.split('=')[1]
-    if (namaCookie) setUserName(decodeURIComponent(namaCookie))
+    // PENTING: smpn36_user_id di-set httpOnly:true di login route, jadi TIDAK BISA
+    // dibaca lewat document.cookie di sini. Ambil dari /api/auth/me (server-side)
+    // supaya userId yang didapat benar-benar valid.
+    async function init() {
+      try {
+        const res = await fetch('/api/auth/me')
+        const data = await res.json()
+        console.log('[guru/page] /api/auth/me response:', data)
 
-    const userId = document.cookie.split('; ')
-      .find(r => r.startsWith('smpn36_user_id='))?.split('=')[1]
-    if (!userId) { setLoading(false); return }
+        if (!data.loggedIn) { setLoading(false); return }
+        setUserName(data.nama ?? 'Guru')
 
-    async function fetchData() {
-      const { data: kelas } = await supabase
-        .from('mapel_guru')
-        .select('mapel:mapel_id(nama, kode), kelas:kelas_id(nama_rombel, tingkat)')
-        .eq('guru_id', userId!)
-        .eq('tahun_ajaran', '2026/2027')
+        const userId = data.userId
+        if (!userId) { setLoading(false); return }
 
-      if (kelas) setKelasDiajar(kelas)
+        const { data: kelas, error: kelasErr } = await supabase
+          .from('mapel_guru')
+          .select('mapel:mapel_id(nama, kode), kelas:kelas_id(nama_rombel, tingkat)')
+          .eq('guru_id', userId)
+          .eq('tahun_ajaran', '2026/2027')
 
-      const { data: wk } = await supabase
-        .from('kelas')
-        .select('nama_rombel, tingkat')
-        .eq('wali_kelas_id', userId!)
-        .eq('tahun_ajaran', '2026/2027')
-        .single()
+        if (kelasErr) console.error('[guru/page] error query mapel_guru:', kelasErr)
+        if (kelas) setKelasDiajar(kelas)
 
-      if (wk) setWaliKelas(wk)
-      setLoading(false)
+        const { data: wk, error: wkErr } = await supabase
+          .from('kelas')
+          .select('nama_rombel, tingkat')
+          .eq('wali_kelas_id', userId)
+          .maybeSingle()
+
+        if (wkErr) console.error('[guru/page] error query wali kelas:', wkErr)
+        if (wk) setWaliKelas(wk)
+      } catch (err) {
+        console.error('[guru/page] init() gagal total:', err)
+      } finally {
+        setLoading(false)
+      }
     }
-    fetchData()
+    init()
   }, [])
 
   const sapaanNama = userName.split(',')[0]
