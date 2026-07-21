@@ -109,12 +109,17 @@ export default function RekapAbsensiGuruPage() {
       else { mulai = `${tahun + 1}-01-01`; selesai = `${tahun + 1}-06-30` }
     }
 
-    const { data: siswaData } = await supabase
-      .from('users')
-      .select('id, nama, nisn')
+    const { data: siswaKelasData } = await supabase
+      .from('siswa_kelas')
+      .select('users(id, nama, nisn)')
       .eq('kelas_id', selectedKelas)
-      .eq('role', 'siswa')
-      .order('nama')
+      .eq('tahun_ajaran', '2026/2027')
+      .eq('status', 'aktif')
+
+    const siswaData = (siswaKelasData || [])
+      .map((d: any) => d.users)
+      .filter(Boolean)
+      .sort((a: any, b: any) => a.nama.localeCompare(b.nama))
 
     const { data: absenData } = await supabase
       .from('absensi_mapel')

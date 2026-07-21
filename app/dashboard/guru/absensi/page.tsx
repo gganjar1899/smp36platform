@@ -74,22 +74,26 @@ export default function AbsensiPage() {
     fetch()
   }, [guruId])
 
-  // Ambil siswa
+  // Ambil siswa (lewat tabel penghubung siswa_kelas, karena users tidak punya kolom kelas_id)
   useEffect(() => {
     if (!selectedKelas) return
     const fetch = async () => {
       setLoading(true)
       const { data } = await supabase
-        .from('users')
-        .select('id, nama, nisn')
+        .from('siswa_kelas')
+        .select('users(id, nama, nisn)')
         .eq('kelas_id', selectedKelas)
-        .eq('role', 'siswa')
-        .order('nama')
+        .eq('tahun_ajaran', '2026/2027')
+        .eq('status', 'aktif')
 
       if (data) {
-        setSiswaList(data)
+        const siswa = (data as any[])
+          .map(d => d.users)
+          .filter(Boolean)
+          .sort((a: Siswa, b: Siswa) => a.nama.localeCompare(b.nama))
+        setSiswaList(siswa)
         const def: AbsensiStatus = {}
-        data.forEach((s: Siswa) => { def[s.id] = 'H' })
+        siswa.forEach((s: Siswa) => { def[s.id] = 'H' })
         setAbsensi(def)
       }
       setLoading(false)
@@ -233,50 +237,52 @@ export default function AbsensiPage() {
               Tandai semua Hadir
             </button>
           </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 w-10">No</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500">Nama Siswa</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 w-32">NISN</th>
-                <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500">Status Kehadiran</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {siswaList.map((siswa, idx) => (
-                <tr key={siswa.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-5 py-3 text-gray-400 text-xs">{idx + 1}</td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-full bg-[#1a3a6b]/10 flex items-center justify-center text-[#1a3a6b] text-xs font-bold flex-shrink-0">
-                        {siswa.nama.charAt(0)}
-                      </div>
-                      <span className="font-medium text-gray-800">{siswa.nama}</span>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3 text-gray-400 text-xs font-mono">{siswa.nisn}</td>
-                  <td className="px-5 py-3">
-                    <div className="flex gap-1 justify-center">
-                      {STATUS.map(opt => (
-                        <button
-                          key={opt.kode}
-                          onClick={() => setStatus(siswa.id, opt.kode as any)}
-                          className={`w-8 h-8 rounded-lg text-xs font-bold transition-all border ${
-                            absensi[siswa.id] === opt.kode
-                              ? `${opt.bg} text-white border-transparent shadow-sm scale-110`
-                              : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300 hover:text-gray-600'
-                          }`}
-                          title={opt.label}
-                        >
-                          {opt.kode}
-                        </button>
-                      ))}
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[560px]">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 w-10">No</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500">Nama Siswa</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 w-32">NISN</th>
+                  <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500">Status Kehadiran</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {siswaList.map((siswa, idx) => (
+                  <tr key={siswa.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-5 py-3 text-gray-400 text-xs">{idx + 1}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-7 h-7 rounded-full bg-[#1a3a6b]/10 flex items-center justify-center text-[#1a3a6b] text-xs font-bold flex-shrink-0">
+                          {siswa.nama.charAt(0)}
+                        </div>
+                        <span className="font-medium text-gray-800">{siswa.nama}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-gray-400 text-xs font-mono">{siswa.nisn}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex gap-1 justify-center">
+                        {STATUS.map(opt => (
+                          <button
+                            key={opt.kode}
+                            onClick={() => setStatus(siswa.id, opt.kode as any)}
+                            className={`w-8 h-8 rounded-lg text-xs font-bold transition-all border ${
+                              absensi[siswa.id] === opt.kode
+                                ? `${opt.bg} text-white border-transparent shadow-sm scale-110`
+                                : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300 hover:text-gray-600'
+                            }`}
+                            title={opt.label}
+                          >
+                            {opt.kode}
+                          </button>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           {/* Action Bar */}
           <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
