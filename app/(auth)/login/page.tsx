@@ -42,24 +42,41 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f0f4f8] flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen relative flex items-center justify-center p-4 overflow-hidden bg-[#f6f7f5]">
+      {/* Lapisan latar: hijau tua di atas, menyapu ke bawah jadi netral -- diambil dari warna lambang sekolah */}
+      <div
+        className="absolute inset-0 -z-10"
+        style={{
+          background: 'radial-gradient(1100px 520px at 50% -12%, #1d5c38 0%, #164a2d 32%, #0f3620 55%, #f6f7f5 78%)',
+        }}
+      />
+      {/* Aksen garis emas tipis, jadi satu-satunya "signature" di halaman ini */}
+      <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-transparent via-[#c9a227] to-transparent" />
 
-        {/* Header sekolah */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-white shadow-sm mb-4 border border-gray-100">
-            <span className="text-3xl font-bold text-[#1a4f8a]">36</span>
+      <div className="w-full max-w-[400px] relative">
+
+        {/* Lambang & identitas sekolah */}
+        <div className="text-center mb-7">
+          <div className="inline-flex items-center justify-center w-[84px] h-[84px] rounded-full bg-white shadow-[0_8px_24px_-4px_rgba(15,54,32,0.35)] mb-5 p-2 ring-1 ring-white/60">
+            <Image
+              src="/logo-smpn36.jpg"
+              alt="Lambang SMP Negeri 36 Bandung"
+              width={72}
+              height={72}
+              className="rounded-full object-cover w-full h-full"
+              priority
+            />
           </div>
-          <h1 className="text-2xl font-bold text-[#1a3a5c]">SMPN 36</h1>
-          <p className="text-sm text-gray-500 mt-1">Platform Ujian & Pembelajaran Digital</p>
+          <h1 className="text-[26px] leading-tight font-bold text-white tracking-tight">SMP Negeri 36 Bandung</h1>
+          <p className="text-sm text-[#cfe3d5] mt-1.5">Platform Ujian &amp; Pembelajaran Digital</p>
         </div>
 
-        {/* Card login */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-          <h2 className="text-lg font-semibold text-gray-800 mb-6">Masuk ke akun kamu</h2>
+        {/* Kartu login */}
+        <div className="bg-white rounded-[20px] shadow-[0_20px_50px_-16px_rgba(15,54,32,0.45)] border border-black/[0.03] p-7 sm:p-8">
+          <h2 className="text-[15px] font-semibold text-[#12331f] mb-6 tracking-wide">MASUK KE AKUN KAMU</h2>
 
           {error && (
-            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 flex items-start gap-2">
+            <div className="mb-5 p-3 rounded-xl bg-red-50 border border-red-100 flex items-start gap-2.5">
               <svg className="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -70,24 +87,24 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Username */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label className="block text-[13px] font-medium text-[#4b5a52] mb-1.5">
                 Username
               </label>
               <input
                 type="text"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
-                placeholder="Masukkan username"
+                placeholder="NISN / NIP / username admin"
                 required
                 autoComplete="username"
                 autoFocus
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1a4f8a]/30 focus:border-[#1a4f8a] transition-all"
+                className="w-full px-4 py-3 rounded-xl border border-[#e3e7e3] bg-[#fafbfa] text-[15px] text-[#12331f] placeholder-[#9aa79f] focus:outline-none focus:ring-[3px] focus:ring-[#1d5c38]/12 focus:border-[#1d5c38] focus:bg-white transition-all"
               />
             </div>
 
             {/* Password */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label className="block text-[13px] font-medium text-[#4b5a52] mb-1.5">
                 Password
               </label>
               <div className="relative">
@@ -98,20 +115,20 @@ export default function LoginPage() {
                   placeholder="Masukkan password"
                   required
                   autoComplete="current-password"
-                  className="w-full px-4 py-2.5 pr-11 rounded-lg border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1a4f8a]/30 focus:border-[#1a4f8a] transition-all"
+                  className="w-full px-4 py-3 pr-11 rounded-xl border border-[#e3e7e3] bg-[#fafbfa] text-[15px] text-[#12331f] placeholder-[#9aa79f] focus:outline-none focus:ring-[3px] focus:ring-[#1d5c38]/12 focus:border-[#1d5c38] focus:bg-white transition-all"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#9aa79f] hover:text-[#4b5a52] transition-colors"
                   aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
                 >
                   {showPassword ? (
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
                     </svg>
                   ) : (
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                     </svg>
@@ -124,7 +141,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading || !username || !password}
-              className="w-full py-2.5 px-4 rounded-lg bg-[#1a4f8a] text-white text-sm font-semibold hover:bg-[#153f6e] disabled:opacity-50 disabled:cursor-not-allowed transition-all mt-2 flex items-center justify-center gap-2"
+              className="w-full py-3.5 px-4 rounded-xl bg-[#164a2d] text-white text-[14px] font-semibold tracking-wide hover:bg-[#0f3620] disabled:opacity-40 disabled:cursor-not-allowed transition-all mt-1 flex items-center justify-center gap-2 shadow-[0_4px_14px_-2px_rgba(22,74,45,0.5)]"
             >
               {loading ? (
                 <>
@@ -141,29 +158,29 @@ export default function LoginPage() {
           </form>
 
           {/* Info tambahan */}
-          <div className="mt-6 pt-5 border-t border-gray-100">
-            <p className="text-xs text-gray-400 text-center">
+          <div className="mt-6 pt-5 border-t border-[#f0f1ef]">
+            <p className="text-xs text-[#9aa79f] text-center">
               Lupa password? Hubungi guru atau admin sekolah.
             </p>
           </div>
         </div>
 
         {/* Role hint */}
-        <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+        <div className="mt-5 grid grid-cols-3 gap-2.5 text-center">
           {[
             { role: 'Siswa', hint: 'Gunakan NISN' },
             { role: 'Guru',  hint: 'Gunakan NIP' },
             { role: 'Admin', hint: 'Dari sekolah' },
           ].map(item => (
-            <div key={item.role} className="bg-white/70 rounded-lg px-2 py-2 border border-gray-100">
-              <p className="text-xs font-medium text-gray-600">{item.role}</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">{item.hint}</p>
+            <div key={item.role} className="bg-white/95 backdrop-blur-sm rounded-xl px-2 py-2.5 border border-white/40 shadow-sm">
+              <p className="text-xs font-semibold text-[#12331f]">{item.role}</p>
+              <p className="text-[11px] text-[#7c8a80] mt-0.5">{item.hint}</p>
             </div>
           ))}
         </div>
 
-        <p className="text-center text-xs text-gray-400 mt-6">
-          © {new Date().getFullYear()} SMPN 36 — Platform CBT
+        <p className="text-center text-xs text-[#d7e5da] mt-7">
+          © {new Date().getFullYear()} SMP Negeri 36 Bandung — Platform CBT
         </p>
       </div>
     </div>
