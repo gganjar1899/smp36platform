@@ -33,11 +33,17 @@ export default function MateriPage() {
   })
 
   useEffect(() => {
-    const userId = document.cookie.split('; ')
-      .find(r => r.startsWith('smpn36_user_id='))?.split('=')[1]
-    if (!userId) return
-
     async function fetchData() {
+      let userId: string | undefined
+      try {
+        const res = await fetch('/api/auth/me')
+        const meData = await res.json()
+        if (meData.loggedIn) userId = meData.userId
+      } catch (err) {
+        console.error('[guru/materi] gagal ambil identitas:', err)
+      }
+      if (!userId) return
+
       const { data } = await supabase
         .from('mapel_guru')
         .select('mapel:mapel_id(id,nama), kelas:kelas_id(id,nama_rombel)')

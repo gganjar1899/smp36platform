@@ -47,11 +47,18 @@ export default function AbsensiPage() {
   const [saving, setSaving]             = useState(false)
   const [message, setMessage]           = useState<{type: 'success'|'error', text: string} | null>(null)
 
-  // Ambil user login (session kustom via cookie, bukan Supabase Auth)
+  // Ambil user login lewat /api/auth/me (cookie ID bersifat httpOnly, tidak bisa dibaca via document.cookie)
   useEffect(() => {
-    const userId = document.cookie.split('; ')
-      .find(r => r.startsWith('smpn36_user_id='))?.split('=')[1]
-    if (userId) setGuruId(userId)
+    const init = async () => {
+      try {
+        const res = await fetch('/api/auth/me')
+        const data = await res.json()
+        if (data.loggedIn && data.userId) setGuruId(data.userId)
+      } catch (err) {
+        console.error('[guru/absensi] gagal ambil identitas:', err)
+      }
+    }
+    init()
   }, [])
 
   // Ambil kelas & mapel dari guru_mapel

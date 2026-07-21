@@ -56,12 +56,21 @@ export default function RekapAbsensiGuruPage() {
   const [rekap, setRekap] = useState<RekapSiswa[]>([])
   const [loading, setLoading] = useState(false)
 
-  // Sesi guru (cookie kustom, bukan Supabase Auth)
+  // Sesi guru lewat /api/auth/me (cookie ID httpOnly, tidak bisa dibaca via document.cookie)
   useEffect(() => {
-    const id = document.cookie.split('; ').find(r => r.startsWith('smpn36_user_id='))?.split('=')[1]
     const nama = document.cookie.split('; ').find(r => r.startsWith('smpn36_user_nama='))?.split('=')[1]
-    if (id) setGuruId(id)
     if (nama) setGuruNama(decodeURIComponent(nama))
+
+    const init = async () => {
+      try {
+        const res = await fetch('/api/auth/me')
+        const data = await res.json()
+        if (data.loggedIn && data.userId) setGuruId(data.userId)
+      } catch (err) {
+        console.error('[guru/rekap-absensi] gagal ambil identitas:', err)
+      }
+    }
+    init()
   }, [])
 
   // Ambil profil guru (untuk NIP di lembar tanda tangan)

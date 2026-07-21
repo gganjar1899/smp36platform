@@ -25,11 +25,18 @@ export default function GuruDashboard() {
       .find(r => r.startsWith('smpn36_user_nama='))?.split('=')[1]
     if (namaCookie) setUserName(decodeURIComponent(namaCookie))
 
-    const userId = document.cookie.split('; ')
-      .find(r => r.startsWith('smpn36_user_id='))?.split('=')[1]
-    if (!userId) { setLoading(false); return }
-
     async function fetchData() {
+      // Cookie ID bersifat httpOnly, jadi ambil userId lewat /api/auth/me, bukan document.cookie
+      let userId: string | undefined
+      try {
+        const res = await fetch('/api/auth/me')
+        const meData = await res.json()
+        if (meData.loggedIn) userId = meData.userId
+      } catch (err) {
+        console.error('[guru/dashboard] gagal ambil identitas:', err)
+      }
+      if (!userId) { setLoading(false); return }
+
       const { data: kelas } = await supabase
         .from('guru_mapel')
         .select('mapel:mapel_id(nama_mapel, kode_mapel), kelas:kelas_id(nama_rombel, tingkat)')
