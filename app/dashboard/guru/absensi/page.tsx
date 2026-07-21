@@ -47,20 +47,11 @@ export default function AbsensiPage() {
   const [saving, setSaving]             = useState(false)
   const [message, setMessage]           = useState<{type: 'success'|'error', text: string} | null>(null)
 
-  // Ambil user login (app ini pakai cookie custom + /api/auth/me, bukan Supabase Auth)
+  // Ambil user login (session kustom via cookie, bukan Supabase Auth)
   useEffect(() => {
-    const getUser = async () => {
-      try {
-        const res = await fetch('/api/auth/me')
-        const data = await res.json()
-        if (data.loggedIn && data.role === 'guru' && data.userId) {
-          setGuruId(data.userId)
-        }
-      } catch {
-        // biarkan guruId kosong, form akan tampil "pilih kelas" kosong
-      }
-    }
-    getUser()
+    const userId = document.cookie.split('; ')
+      .find(r => r.startsWith('smpn36_user_id='))?.split('=')[1]
+    if (userId) setGuruId(userId)
   }, [])
 
   // Ambil kelas & mapel dari guru_mapel
@@ -89,20 +80,16 @@ export default function AbsensiPage() {
     const fetch = async () => {
       setLoading(true)
       const { data } = await supabase
-        .from('siswa_kelas')
-        .select('users(id, nama, nisn)')
+        .from('users')
+        .select('id, nama, nisn')
         .eq('kelas_id', selectedKelas)
-        .eq('tahun_ajaran', '2026/2027')
-        .eq('status', 'aktif')
+        .eq('role', 'siswa')
+        .order('nama')
 
       if (data) {
-        const siswa = (data as any[])
-          .map(r => r.users)
-          .filter(Boolean)
-          .sort((a, b) => a.nama.localeCompare(b.nama)) as Siswa[]
-        setSiswaList(siswa)
+        setSiswaList(data)
         const def: AbsensiStatus = {}
-        siswa.forEach((s: Siswa) => { def[s.id] = 'H' })
+        data.forEach((s: Siswa) => { def[s.id] = 'H' })
         setAbsensi(def)
       }
       setLoading(false)
@@ -246,8 +233,7 @@ export default function AbsensiPage() {
               Tandai semua Hadir
             </button>
           </div>
-          <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[600px]">
+          <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 w-10">No</th>
@@ -275,7 +261,7 @@ export default function AbsensiPage() {
                         <button
                           key={opt.kode}
                           onClick={() => setStatus(siswa.id, opt.kode as any)}
-                          className={`w-7 h-7 md:w-8 md:h-8 rounded-lg text-xs font-bold transition-all border flex-shrink-0 ${
+                          className={`w-8 h-8 rounded-lg text-xs font-bold transition-all border ${
                             absensi[siswa.id] === opt.kode
                               ? `${opt.bg} text-white border-transparent shadow-sm scale-110`
                               : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300 hover:text-gray-600'
@@ -291,10 +277,9 @@ export default function AbsensiPage() {
               ))}
             </tbody>
           </table>
-          </div>
 
           {/* Action Bar */}
-          <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between flex-wrap gap-3 bg-gray-50/50">
+          <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
             <div>
               {message && (
                 <p className={`text-sm font-medium ${message.type === 'success' ? 'text-emerald-600' : 'text-red-500'}`}>

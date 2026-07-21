@@ -14,8 +14,8 @@ const menuGroups = [
       { href: '/dashboard/guru/absensi', label: 'Absensi', exact: false, icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
       )},
-      { href: '/dashboard/guru/jurnal', label: 'Jurnal Mengajar', exact: false, icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+      { href: '/dashboard/guru/rekap-absensi', label: 'Rekap Absensi', exact: false, icon: (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
       )},
       { href: '/dashboard/guru/materi', label: 'Materi Ajar', exact: false, icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
@@ -44,7 +44,6 @@ const menuGroups = [
 export default function GuruLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
   const [userName, setUserName] = useState('Guru')
 
   useEffect(() => {
@@ -53,51 +52,21 @@ export default function GuruLayout({ children }: { children: React.ReactNode }) 
     if (nama) setUserName(decodeURIComponent(nama))
   }, [])
 
-  // Tutup drawer mobile otomatis tiap pindah halaman
-  useEffect(() => { setMobileOpen(false) }, [pathname])
-
   const initial = userName.charAt(0).toUpperCase()
-
-  const toggleSidebar = () => {
-    setCollapsed(c => !c)
-    setMobileOpen(o => !o)
-  }
 
   return (
     <div className="min-h-screen bg-[#f4f5fb] flex font-sans">
-      {/* Backdrop mobile */}
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 bg-black/40 z-30 md:hidden"
-          onClick={() => setMobileOpen(false)}
-        />
-      )}
-
-      <aside className={`
-        fixed md:static inset-y-0 left-0 z-40
-        w-[260px] ${collapsed ? 'md:w-[72px]' : 'md:w-[260px]'}
-        transform transition-all duration-300
-        ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
-        bg-white border-r border-gray-100 min-h-screen flex flex-col shadow-sm flex-shrink-0
-      `}>
-        <div className="h-16 flex items-center px-5 border-b border-gray-100 gap-3 justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#1a6b3a] flex items-center justify-center flex-shrink-0">
-              <span className="text-white font-bold text-xs">36</span>
-            </div>
-            {!collapsed && (
-              <div className="md:block">
-                <p className="text-[#1a6b3a] font-bold text-sm leading-tight">SMPN 36</p>
-                <p className="text-gray-400 text-xs">Portal Guru</p>
-              </div>
-            )}
+      <aside className={`${collapsed ? 'w-[72px]' : 'w-[260px]'} transition-all duration-300 bg-white border-r border-gray-100 min-h-screen flex flex-col shadow-sm flex-shrink-0`}>
+        <div className="h-16 flex items-center px-5 border-b border-gray-100 gap-3">
+          <div className="w-8 h-8 rounded-lg bg-[#1a6b3a] flex items-center justify-center flex-shrink-0">
+            <span className="text-white font-bold text-xs">36</span>
           </div>
-          <button
-            onClick={() => setMobileOpen(false)}
-            className="md:hidden w-7 h-7 flex items-center justify-center text-gray-400"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
-          </button>
+          {!collapsed && (
+            <div>
+              <p className="text-[#1a6b3a] font-bold text-sm leading-tight">SMPN 36</p>
+              <p className="text-gray-400 text-xs">Portal Guru</p>
+            </div>
+          )}
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-5">
@@ -139,21 +108,21 @@ export default function GuruLayout({ children }: { children: React.ReactNode }) 
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0 w-full">
-        <header className="h-16 bg-white border-b border-gray-100 px-3 md:px-6 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-2 md:gap-4 min-w-0">
-            <button onClick={toggleSidebar}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-all flex-shrink-0">
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="h-16 bg-white border-b border-gray-100 px-6 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setCollapsed(!collapsed)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-all">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7"/></svg>
             </button>
-            <div className="min-w-0">
-              <p className="text-xs md:text-sm font-semibold text-gray-800 truncate">Portal Guru — SMPN 36</p>
-              <p className="text-[10px] md:text-xs text-gray-400 truncate">Tahun Ajaran 2026/2027 · Semester 1</p>
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Portal Guru — SMPN 36</p>
+              <p className="text-xs text-gray-400">Tahun Ajaran 2026/2027 · Semester 1</p>
             </div>
           </div>
-          <div className="w-8 h-8 rounded-full bg-[#1a6b3a] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{initial}</div>
+          <div className="w-8 h-8 rounded-full bg-[#1a6b3a] flex items-center justify-center text-white text-xs font-bold">{initial}</div>
         </header>
-        <main className="flex-1 p-3 md:p-6 overflow-auto">{children}</main>
+        <main className="flex-1 p-6 overflow-auto">{children}</main>
         <footer className="px-6 py-2 border-t border-gray-100">
           <p className="text-[11px] text-gray-300 text-center">2026 SMP Negeri 36 Bandung</p>
         </footer>

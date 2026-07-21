@@ -20,53 +20,42 @@ export default function GuruDashboard() {
   })
 
   useEffect(() => {
-    // PENTING: smpn36_user_id di-set httpOnly:true di login route, jadi TIDAK BISA
-    // dibaca lewat document.cookie di sini. Ambil dari /api/auth/me (server-side)
-    // supaya userId yang didapat benar-benar valid.
-    async function init() {
-      try {
-        const res = await fetch('/api/auth/me')
-        const data = await res.json()
-        console.log('[guru/page] /api/auth/me response:', data)
+    // Fix: decode nama dari cookie
+    const namaCookie = document.cookie.split('; ')
+      .find(r => r.startsWith('smpn36_user_nama='))?.split('=')[1]
+    if (namaCookie) setUserName(decodeURIComponent(namaCookie))
 
-        if (!data.loggedIn) { setLoading(false); return }
-        setUserName(data.nama ?? 'Guru')
+    const userId = document.cookie.split('; ')
+      .find(r => r.startsWith('smpn36_user_id='))?.split('=')[1]
+    if (!userId) { setLoading(false); return }
 
-        const userId = data.userId
-        if (!userId) { setLoading(false); return }
+    async function fetchData() {
+      const { data: kelas } = await supabase
+        .from('guru_mapel')
+        .select('mapel:mapel_id(nama_mapel, kode_mapel), kelas:kelas_id(nama_rombel, tingkat)')
+        .eq('guru_id', userId!)
+        .eq('tahun_ajaran', '2026/2027')
 
-        const { data: kelas, error: kelasErr } = await supabase
-          .from('mapel_guru')
-          .select('mapel:mapel_id(nama, kode), kelas:kelas_id(nama_rombel, tingkat)')
-          .eq('guru_id', userId)
-          .eq('tahun_ajaran', '2026/2027')
+      if (kelas) setKelasDiajar(kelas)
 
-        if (kelasErr) console.error('[guru/page] error query mapel_guru:', kelasErr)
-        if (kelas) setKelasDiajar(kelas)
+      const { data: wk } = await supabase
+        .from('kelas')
+        .select('nama_rombel, tingkat')
+        .eq('wali_kelas_id', userId!)
+        .eq('tahun_ajaran', '2026/2027')
+        .single()
 
-        const { data: wk, error: wkErr } = await supabase
-          .from('kelas')
-          .select('nama_rombel, tingkat')
-          .eq('wali_kelas_id', userId)
-          .maybeSingle()
-
-        if (wkErr) console.error('[guru/page] error query wali kelas:', wkErr)
-        if (wk) setWaliKelas(wk)
-      } catch (err) {
-        console.error('[guru/page] init() gagal total:', err)
-      } finally {
-        setLoading(false)
-      }
+      if (wk) setWaliKelas(wk)
+      setLoading(false)
     }
-    init()
+    fetchData()
   }, [])
 
   const sapaanNama = userName.split(',')[0]
-  const mapelUnik  = [...new Set(kelasDiajar.map((k: any) => k.mapel?.nama).filter(Boolean))]
+  const mapelUnik  = [...new Set(kelasDiajar.map((k: any) => k.mapel?.nama_mapel).filter(Boolean))]
 
   const quickMenu = [
     { href: '/dashboard/guru/absensi',     label: 'Input Absensi',  desc: 'Catat kehadiran siswa',       color: 'bg-blue-500',   icon: '✓'  },
-    { href: '/dashboard/guru/jurnal',      label: 'Jurnal Mengajar',desc: 'Catat kegiatan pembelajaran',  color: 'bg-emerald-600',icon: '📔' },
     { href: '/dashboard/guru/materi',      label: 'Upload Materi',  desc: 'Bagikan bahan ajar',           color: 'bg-green-500',  icon: '📄' },
     { href: '/dashboard/guru/dokumen-ajar',label: 'Dokumen Ajar',   desc: 'Modul & RPP digital',          color: 'bg-purple-500', icon: '📁' },
     { href: '/dashboard/guru/bank-soal',   label: 'Bank Soal',      desc: 'Kelola soal CBT',              color: 'bg-amber-500',  icon: '📝' },
@@ -136,11 +125,11 @@ export default function GuruDashboard() {
             {kelasDiajar.map((item: any, i: number) => (
               <div key={i} className="flex items-center gap-2 p-2.5 rounded-lg bg-gray-50">
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                  item.mapel?.kode === 'INFO' ? 'bg-blue-400' : 'bg-green-400'
+                  item.mapel?.kode_mapel === 'INFO' ? 'bg-blue-400' : 'bg-green-400'
                 }`}/>
                 <div>
                   <p className="text-xs font-medium text-gray-700">{item.kelas?.nama_rombel}</p>
-                  <p className="text-[11px] text-gray-400">{item.mapel?.nama}</p>
+                  <p className="text-[11px] text-gray-400">{item.mapel?.nama_mapel}</p>
                 </div>
               </div>
             ))}

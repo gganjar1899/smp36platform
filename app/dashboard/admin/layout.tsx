@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
@@ -52,6 +52,15 @@ const menuGroups = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
+  const [userName, setUserName] = useState('Administrator')
+
+  useEffect(() => {
+    const nama = document.cookie.split('; ')
+      .find(r => r.startsWith('smpn36_user_nama='))?.split('=')[1]
+    if (nama) setUserName(decodeURIComponent(nama))
+  }, [])
+
+  const initial = userName.charAt(0).toUpperCase()
 
   return (
     <div className="min-h-screen bg-[#f4f5fb] flex font-sans">
@@ -106,10 +115,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="p-3 border-t border-gray-100">
           {!collapsed && (
             <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 mb-2">
-              <div className="w-8 h-8 rounded-full bg-[#1a3a6b] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">G</div>
+              <div className="w-8 h-8 rounded-full bg-[#1a3a6b] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{initial}</div>
               <div className="overflow-hidden flex-1">
-                <p className="text-xs font-semibold text-gray-800 truncate">Gina Ganjar Maulana</p>
-                <p className="text-[10px] text-gray-400 truncate">Informatika · IPA</p>
+                <p className="text-xs font-semibold text-gray-800 truncate">{userName}</p>
+                <p className="text-[10px] text-gray-400 truncate">Administrator</p>
               </div>
             </div>
           )}
@@ -145,7 +154,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
               <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
             </div>
-            <div className="w-8 h-8 rounded-full bg-[#1a3a6b] flex items-center justify-center text-white text-xs font-bold">G</div>
+            <div className="w-8 h-8 rounded-full bg-[#1a3a6b] flex items-center justify-center text-white text-xs font-bold">{initial}</div>
           </div>
         </header>
 
