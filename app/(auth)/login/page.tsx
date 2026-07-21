@@ -42,12 +42,20 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center p-4 overflow-hidden bg-[#f6f7f5]">
-      {/* Lapisan latar: hijau tua di atas, menyapu ke bawah jadi netral -- diambil dari warna lambang sekolah */}
+    <div className="min-h-screen relative flex items-center justify-center p-4 overflow-hidden bg-[#0f3620]">
+      {/* Lapisan latar hijau tua konsisten -- diambil dari warna lambang sekolah, dengan sedikit gradasi radial di belakang lambang supaya tidak flat */}
       <div
         className="absolute inset-0 -z-10"
         style={{
-          background: 'radial-gradient(1100px 520px at 50% -12%, #1d5c38 0%, #164a2d 32%, #0f3620 55%, #f6f7f5 78%)',
+          background: 'radial-gradient(1000px 600px at 50% 0%, #1d6b3f 0%, #164a2d 45%, #0f3620 75%, #0a2818 100%)',
+        }}
+      />
+      {/* Tekstur halus supaya tidak terasa flat */}
+      <div
+        className="absolute inset-0 -z-10 opacity-[0.04]"
+        style={{
+          backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)',
+          backgroundSize: '28px 28px',
         }}
       />
       {/* Aksen garis emas tipis, jadi satu-satunya "signature" di halaman ini */}
