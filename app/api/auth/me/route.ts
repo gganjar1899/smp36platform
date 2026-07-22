@@ -25,32 +25,24 @@ export async function GET() {
 
   if (user.role === "siswa") {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: siswa } = await (supabase as any)
-      .from("siswa")
-      .select("id, nama, kelas, nisn")
-      .eq("nisn", user.nisn)
+    const { data: sk } = await (supabase as any)
+      .from("siswa_kelas")
+      .select("kelas_id, kelas:kelas_id(id, nama_rombel)")
+      .eq("siswa_id", user.id)
+      .eq("tahun_ajaran", "2026/2027")
+      .eq("status", "aktif")
       .single();
 
-    let kelasId: string | null = null;
-    let kelasNama: string | null = null;
-    if (siswa?.kelas) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: kelasRow } = await (supabase as any)
-        .from("kelas")
-        .select("id, nama_rombel")
-        .eq("nama_rombel", siswa.kelas)
-        .single();
-      kelasId = kelasRow?.id ?? null;
-      kelasNama = kelasRow?.nama_rombel ?? siswa.kelas;
-    }
+    const kelasId = sk?.kelas?.id ?? null;
+    const kelasNama = sk?.kelas?.nama_rombel ?? null;
 
     return NextResponse.json({
       loggedIn: true,
       userId: user.id,
       role: "siswa",
       nama: user.nama,
-      siswa: siswa
-        ? { id: siswa.id, kelasId, kelasNama }
+      siswa: kelasId
+        ? { id: user.id, kelasId, kelasNama }
         : null,
     });
   }
