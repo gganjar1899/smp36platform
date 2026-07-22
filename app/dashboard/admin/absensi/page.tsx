@@ -185,15 +185,15 @@ export default function RekapAbsensiAdminPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-3 sm:p-4 lg:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Rekap Absensi</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Rekap Absensi</h1>
           <p className="text-gray-500 text-sm mt-1">Rekap kehadiran siswa semua kelas 7, 8, dan 9 — per bulan & semester</p>
         </div>
         {rekap.length > 0 && (
           <button onClick={handleExportExcel}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition">
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition w-full sm:w-auto">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
@@ -276,7 +276,7 @@ export default function RekapAbsensiAdminPage() {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-5 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
         {[
           { label: 'Rata Kehadiran', value: rataKehadiran + '%', color: 'text-blue-600 bg-blue-50 border-blue-200' },
           { label: 'Total Hadir', value: totalH, color: 'text-green-600 bg-green-50 border-green-200' },

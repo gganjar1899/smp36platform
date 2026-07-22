@@ -52,6 +52,7 @@ const menuGroups = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const [userName, setUserName] = useState('Administrator')
 
   useEffect(() => {
@@ -60,13 +61,31 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (nama) setUserName(decodeURIComponent(nama))
   }, [])
 
+  // Tutup menu mobile otomatis setiap kali pindah halaman
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [pathname])
+
   const initial = userName.charAt(0).toUpperCase()
 
   return (
     <div className="min-h-screen bg-[#f4f5fb] flex font-sans">
+      {/* Overlay gelap saat menu mobile terbuka */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-30 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
 
       {/* Sidebar */}
-      <aside className={`${collapsed ? 'w-[72px]' : 'w-[260px]'} transition-all duration-300 bg-white border-r border-gray-100 min-h-screen flex flex-col shadow-sm flex-shrink-0`}>
+      <aside className={`
+        ${collapsed ? 'lg:w-[72px]' : 'lg:w-[260px]'}
+        w-[260px] transition-all duration-300 bg-white border-r border-gray-100
+        min-h-screen flex flex-col shadow-sm flex-shrink-0
+        fixed lg:static inset-y-0 left-0 z-40
+        ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0
+      `}>
 
         {/* Brand */}
         <div className="h-16 flex items-center px-5 border-b border-gray-100 gap-3">
@@ -136,22 +155,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="flex-1 flex flex-col min-w-0">
 
         {/* Topbar */}
-        <header className="h-16 bg-white border-b border-gray-100 px-6 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-4">
+        <header className="h-16 bg-white border-b border-gray-100 px-4 lg:px-6 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3 lg:gap-4 min-w-0">
+            {/* Tombol hamburger: buka menu mobile di layar kecil, collapse sidebar di desktop */}
             <button
-              onClick={() => setCollapsed(!collapsed)}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-all"
+              onClick={() => {
+                if (window.innerWidth < 1024) setMobileOpen(o => !o)
+                else setCollapsed(c => !c)
+              }}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-all flex-shrink-0"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" /></svg>
             </button>
-            <div>
-              <p className="text-sm font-semibold text-gray-800">Platform Administrasi Sekolah</p>
-              <p className="text-xs text-gray-400">Tahun Ajaran 2026/2027 · Semester 1</p>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-800 truncate">Platform Administrasi Sekolah</p>
+              <p className="text-xs text-gray-400 hidden sm:block">Tahun Ajaran 2026/2027 · Semester 1</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center hidden sm:flex">
               <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
             </div>
             <div className="w-8 h-8 rounded-full bg-[#1a3a6b] flex items-center justify-center text-white text-xs font-bold">{initial}</div>
@@ -159,7 +182,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </header>
 
         {/* Content */}
-        <main className="flex-1 p-6 overflow-auto">
+        <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-auto">
           {children}
         </main>
 

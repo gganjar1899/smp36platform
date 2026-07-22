@@ -145,9 +145,9 @@ export default function InputAbsensiAdminPage() {
   const namaKelas = kelasList.find(k => k.id === kelasId)?.nama_rombel ?? ''
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-3 sm:p-4 lg:p-6 max-w-4xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Input Absensi</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Input Absensi</h1>
         <p className="text-gray-500 text-sm mt-1">Semua kelas 7, 8, dan 9 — tandai status yang berbeda dari Hadir</p>
       </div>
 
