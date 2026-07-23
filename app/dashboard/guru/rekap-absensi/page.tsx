@@ -14,6 +14,7 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 type RekapSiswa = {
+  siswa_id: string
   nisn: string
   nama: string
   H: number
@@ -25,6 +26,9 @@ type RekapSiswa = {
   total: number
   persen: number
 }
+
+type Pertemuan = { pertemuan_ke: number; tanggal: string }
+type MatrixRow = { siswa_id: string; nisn: string; nama: string; status: Record<number, string> }
 
 type KelasOpt = { id: string; nama_rombel: string }
 type MapelOpt = { id: string; nama_mapel: string }
@@ -55,6 +59,9 @@ export default function RekapAbsensiGuruPage() {
 
   const [rekap, setRekap] = useState<RekapSiswa[]>([])
   const [loading, setLoading] = useState(false)
+  const [tampilan, setTampilan] = useState<'ringkasan' | 'matrix'>('ringkasan')
+  const [pertemuanList, setPertemuanList] = useState<Pertemuan[]>([])
+  const [matrix, setMatrix] = useState<MatrixRow[]>([])
 
   // Sesi guru lewat /api/auth/me (cookie ID httpOnly, tidak bisa dibaca via document.cookie)
   useEffect(() => {
@@ -140,7 +147,7 @@ export default function RekapAbsensiGuruPage() {
 
     const map: Record<string, RekapSiswa> = {}
     ;(siswaData || []).forEach((s: any) => {
-      map[s.id] = { nisn: s.nisn, nama: s.nama, H: 0, S: 0, I: 0, A: 0, T: 0, D: 0, total: 0, persen: 0 }
+      map[s.id] = { siswa_id: s.id, nisn: s.nisn, nama: s.nama, H: 0, S: 0, I: 0, A: 0, T: 0, D: 0, total: 0, persen: 0 }
     })
     ;(absenData || []).forEach((a: any) => {
       if (!map[a.siswa_id]) return
@@ -158,6 +165,74 @@ export default function RekapAbsensiGuruPage() {
   }, [selectedKelas, selectedMapel, mode, bulan, tahun, semester])
 
   useEffect(() => { fetchRekap() }, [fetchRekap])
+
+  const fetchMatrix = useCallback(async () => {
+    if (!selectedKelas || !selectedMapel) { setMatrix([]); setPertemuanList([]); return }
+    setLoading(true)
+
+    let mulai = '', selesai = ''
+    if (mode === 'bulan') {
+      mulai = `${tahun}-${bulan}-01`
+      const lastDay = new Date(tahun, parseInt(bulan), 0).getDate()
+      selesai = `${tahun}-${bulan}-${String(lastDay).padStart(2, '0')}`
+    } else {
+      if (semester === '1') { mulai = `${tahun}-07-01`; selesai = `${tahun}-12-31` }
+      else { mulai = `${tahun + 1}-01-01`; selesai = `${tahun + 1}-06-30` }
+    }
+
+    const { data: siswaKelasData } = await supabase
+      .from('siswa_kelas')
+      .select('users(id, nama, nisn)')
+      .eq('kelas_id', selectedKelas)
+      .eq('tahun_ajaran', '2026/2027')
+      .eq('status', 'aktif')
+
+    const siswaData = (siswaKelasData || [])
+      .map((d: any) => d.users)
+      .filter(Boolean)
+      .sort((a: any, b: any) => a.nama.localeCompare(b.nama))
+
+    const { data: absenData } = await supabase
+      .from('absensi_mapel')
+      .select('siswa_id, status, tanggal, pertemuan_ke')
+      .eq('kelas_id', selectedKelas)
+      .eq('mapel_id', selectedMapel)
+      .gte('tanggal', mulai)
+      .lte('tanggal', selesai)
+      .order('pertemuan_ke')
+
+    // Daftar pertemuan unik yang benar-benar ada datanya pada periode ini
+    const pertemuanMap = new Map<number, string>()
+    ;(absenData || []).forEach((a: any) => {
+      if (!pertemuanMap.has(a.pertemuan_ke)) pertemuanMap.set(a.pertemuan_ke, a.tanggal)
+    })
+    const daftarPertemuan = Array.from(pertemuanMap.entries())
+      .map(([pertemuan_ke, tanggal]) => ({ pertemuan_ke, tanggal }))
+      .sort((a, b) => a.pertemuan_ke - b.pertemuan_ke)
+
+    // Susun matrix siswa x pertemuan
+    const rows: MatrixRow[] = (siswaData || []).map((s: any) => ({
+      siswa_id: s.id, nisn: s.nisn, nama: s.nama, status: {},
+    }))
+    const rowById: Record<string, MatrixRow> = {}
+    rows.forEach(r => { rowById[r.siswa_id] = r })
+    ;(absenData || []).forEach((a: any) => {
+      if (rowById[a.siswa_id]) rowById[a.siswa_id].status[a.pertemuan_ke] = a.status
+    })
+
+    setPertemuanList(daftarPertemuan)
+    setMatrix(rows)
+    setLoading(false)
+  }, [selectedKelas, selectedMapel, mode, bulan, tahun, semester])
+
+  useEffect(() => {
+    if (tampilan === 'matrix') fetchMatrix()
+  }, [tampilan, fetchMatrix])
+
+  const formatTglSingkat = (tgl: string) => {
+    const d = new Date(tgl + 'T00:00:00')
+    return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })
+  }
 
   const totalH = rekap.reduce((a, r) => a + r.H, 0)
   const totalS = rekap.reduce((a, r) => a + r.S, 0)
@@ -214,6 +289,106 @@ export default function RekapAbsensiGuruPage() {
     XLSX.writeFile(wb, `Rekap-Absensi-${namaKelas}-${namaMapel}-${periode.replace(/ /g, '-')}.xlsx`)
   }
 
+  const handleExportExcelMatrix = () => {
+    const wb = XLSX.utils.book_new()
+    const periode = getPeriodeLabel()
+    const today = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+
+    const headerRows = [
+      ['REKAP ABSENSI SISWA PER PERTEMUAN'],
+      ['SMP NEGERI 36 BANDUNG'],
+      [''],
+      ['Kelas', ':', namaKelas],
+      ['Mata Pelajaran', ':', namaMapel],
+      ['Periode', ':', periode],
+      ['Guru Mapel', ':', guruNama],
+      [''],
+    ]
+
+    const tableHeader = ['No', 'NISN', 'Nama Siswa', ...pertemuanList.map(p => `Ke-${p.pertemuan_ke} (${formatTglSingkat(p.tanggal)})`)]
+
+    const tableData = matrix.map((r, i) => [
+      i + 1, r.nisn, r.nama, ...pertemuanList.map(p => r.status[p.pertemuan_ke] ?? '-'),
+    ])
+
+    const ttdRows = [
+      [''],
+      ['', '', '', '', '', '', '', 'Bandung, ' + today],
+      ['', '', '', '', '', '', '', 'Guru Mata Pelajaran,'],
+      [''], [''], [''],
+      ['', '', '', '', '', '', '', guruNama],
+      ['', '', '', '', '', '', '', 'NIP. ' + guruNip],
+    ]
+
+    const allRows = [...headerRows, tableHeader, ...tableData, ...ttdRows]
+    const ws = XLSX.utils.aoa_to_sheet(allRows)
+    ws['!cols'] = [{ wch: 4 }, { wch: 14 }, { wch: 28 }, ...pertemuanList.map(() => ({ wch: 10 }))]
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Per Pertemuan')
+    XLSX.writeFile(wb, `Absensi-PerPertemuan-${namaKelas}-${namaMapel}-${periode.replace(/ /g, '-')}.xlsx`)
+  }
+
+  // Cetak / PDF -- pakai print dialog browser (Simpan sebagai PDF), tanpa dependency tambahan
+  const handleCetak = () => {
+    const periode = getPeriodeLabel()
+    const today = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+    let tableHtml = ''
+
+    if (tampilan === 'ringkasan') {
+      tableHtml = `
+        <table>
+          <thead><tr><th>No</th><th>NISN</th><th>Nama Siswa</th><th>Hadir</th><th>Sakit</th><th>Izin</th><th>Alpa</th><th>Total</th><th>% Hadir</th></tr></thead>
+          <tbody>
+            ${rekap.map((r, i) => `<tr><td>${i + 1}</td><td>${r.nisn}</td><td class="left">${r.nama}</td><td>${r.H}</td><td>${r.S || '-'}</td><td>${r.I || '-'}</td><td>${r.A || '-'}</td><td>${r.total}</td><td>${r.persen}%</td></tr>`).join('')}
+          </tbody>
+          <tfoot><tr><td colSpan="3">TOTAL</td><td>${totalH}</td><td>${totalS}</td><td>${totalI}</td><td>${totalA}</td><td>${rekap.reduce((a, r) => a + r.total, 0)}</td><td>${rataKehadiran}%</td></tr></tfoot>
+        </table>`
+    } else {
+      tableHtml = `
+        <table>
+          <thead><tr><th>No</th><th>Nama Siswa</th>${pertemuanList.map(p => `<th>Ke-${p.pertemuan_ke}<br/><small>${formatTglSingkat(p.tanggal)}</small></th>`).join('')}</tr></thead>
+          <tbody>
+            ${matrix.map((r, i) => `<tr><td>${i + 1}</td><td class="left">${r.nama}</td>${pertemuanList.map(p => `<td>${r.status[p.pertemuan_ke] ?? '-'}</td>`).join('')}</tr>`).join('')}
+          </tbody>
+        </table>`
+    }
+
+    const html = `
+      <html><head><title>Absensi ${namaKelas} - ${namaMapel}</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 24px; color: #1a1a1a; }
+        h1 { font-size: 16px; margin: 0; }
+        h2 { font-size: 13px; margin: 2px 0 14px; font-weight: normal; color: #555; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th, td { border: 1px solid #ccc; padding: 5px 6px; text-align: center; }
+        td.left, th.left { text-align: left; }
+        thead { background: #1a3a6b; color: white; }
+        tfoot { font-weight: bold; background: #f3f4f6; }
+        .info { font-size: 12px; margin-bottom: 12px; }
+        .info div { margin-bottom: 2px; }
+        .ttd { margin-top: 40px; font-size: 12px; text-align: right; }
+        @media print { body { padding: 8px; } }
+      </style></head>
+      <body>
+        <h1>REKAP ABSENSI SISWA${tampilan === 'matrix' ? ' PER PERTEMUAN' : ''}</h1>
+        <h2>SMP Negeri 36 Bandung</h2>
+        <div class="info">
+          <div><b>Kelas:</b> ${namaKelas}</div>
+          <div><b>Mata Pelajaran:</b> ${namaMapel}</div>
+          <div><b>Periode:</b> ${periode}</div>
+        </div>
+        ${tableHtml}
+        <div class="ttd">
+          Bandung, ${today}<br/>Guru Mata Pelajaran,<br/><br/><br/><br/>
+          <b>${guruNama}</b><br/>NIP. ${guruNip}
+        </div>
+        <script>window.onload = () => window.print()</script>
+      </body></html>`
+
+    const w = window.open('', '_blank')
+    if (w) { w.document.write(html); w.document.close() }
+  }
+
   return (
     <div className="space-y-5 max-w-6xl">
       {/* Header */}
@@ -222,13 +397,22 @@ export default function RekapAbsensiGuruPage() {
           <h1 className="text-lg font-bold text-gray-800">Rekap Absensi</h1>
           <p className="text-sm text-gray-400 mt-0.5">Rekap kehadiran siswa per bulan & semester untuk kelas yang Anda ampu</p>
         </div>
-        {rekap.length > 0 && (
-          <button onClick={handleExportExcel}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H8a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-            Export Excel
-          </button>
-        )}
+        <div className="flex gap-2">
+          {((tampilan === 'ringkasan' && rekap.length > 0) || (tampilan === 'matrix' && matrix.length > 0)) && (
+            <>
+              <button onClick={handleCetak}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a1 1 0 001-1v-4H8v4a1 1 0 001 1zm8-12V5a1 1 0 00-1-1H8a1 1 0 00-1 1v4h10z"/></svg>
+                Cetak / PDF
+              </button>
+              <button onClick={tampilan === 'ringkasan' ? handleExportExcel : handleExportExcelMatrix}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H8a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                Export Excel
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Filter */}
@@ -285,6 +469,19 @@ export default function RekapAbsensiGuruPage() {
         </div>
       </div>
 
+      {/* Toggle Tampilan */}
+      <div className="flex gap-2">
+        {(['ringkasan', 'matrix'] as const).map(t => (
+          <button key={t} onClick={() => setTampilan(t)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium border transition
+              ${tampilan === t ? 'bg-[#1a3a6b] text-white border-[#1a3a6b]' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
+            {t === 'ringkasan' ? 'Ringkasan' : 'Tabel Per Pertemuan'}
+          </button>
+        ))}
+      </div>
+
+      {tampilan === 'ringkasan' ? (
+      <>
       {/* Summary */}
       <div className="grid grid-cols-5 gap-3">
         {[
@@ -301,7 +498,7 @@ export default function RekapAbsensiGuruPage() {
         ))}
       </div>
 
-      {/* Tabel */}
+      {/* Tabel Ringkasan */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-12 text-center text-gray-400">
@@ -335,7 +532,7 @@ export default function RekapAbsensiGuruPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {rekap.map((r, i) => (
-                  <tr key={r.nisn} className={`hover:bg-gray-50/50 transition ${r.A >= 3 ? 'bg-red-50/40' : ''}`}>
+                  <tr key={r.siswa_id} className={`hover:bg-gray-50/50 transition ${r.A >= 3 ? 'bg-red-50/40' : ''}`}>
                     <td className="px-4 py-3 text-gray-400 text-xs">{i + 1}</td>
                     <td className="px-4 py-3 font-medium text-gray-800">{r.nama}</td>
                     <td className="px-4 py-3 text-gray-400 text-xs">{r.nisn}</td>
@@ -373,6 +570,67 @@ export default function RekapAbsensiGuruPage() {
           </div>
         )}
       </div>
+      </>
+      ) : (
+      /* Tabel Per Pertemuan -- baris siswa, kolom tiap pertemuan (nomor + tanggal di header),
+         persis format absensi kertas: mudah dilihat progres kehadiran sepanjang periode */
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="p-12 text-center text-gray-400">
+            <div className="w-8 h-8 border-2 border-[#1a3a6b] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            Memuat data...
+          </div>
+        ) : !selectedKelas || !selectedMapel ? (
+          <div className="p-12 text-center text-gray-400 text-sm">
+            Pilih kelas dan mata pelajaran untuk melihat tabel.
+          </div>
+        ) : pertemuanList.length === 0 ? (
+          <div className="p-12 text-center text-gray-400">
+            <p className="font-medium text-sm">Belum ada pertemuan tercatat pada periode ini</p>
+            <p className="text-xs mt-1">Input absensi terlebih dahulu di menu Absensi</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="text-sm border-collapse">
+              <thead>
+                <tr className="bg-[#1a3a6b] text-white">
+                  <th className="sticky left-0 bg-[#1a3a6b] px-4 py-3 text-left font-semibold w-8 z-10">No</th>
+                  <th className="sticky left-8 bg-[#1a3a6b] px-4 py-3 text-left font-semibold min-w-[180px] z-10">Nama Siswa</th>
+                  {pertemuanList.map(p => (
+                    <th key={p.pertemuan_ke} className="px-2 py-2 text-center font-semibold border-l border-white/10 min-w-[52px]">
+                      <div className="leading-tight">
+                        <div>Ke-{p.pertemuan_ke}</div>
+                        <div className="text-[10px] font-normal opacity-80">{formatTglSingkat(p.tanggal)}</div>
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {matrix.map((r, i) => (
+                  <tr key={r.siswa_id} className="hover:bg-gray-50/50 transition">
+                    <td className="sticky left-0 bg-white px-4 py-2.5 text-gray-400 text-xs">{i + 1}</td>
+                    <td className="sticky left-8 bg-white px-4 py-2.5 font-medium text-gray-800">{r.nama}</td>
+                    {pertemuanList.map(p => {
+                      const s = r.status[p.pertemuan_ke]
+                      const warna: Record<string, string> = {
+                        H: 'text-green-600', S: 'text-yellow-600', I: 'text-blue-600',
+                        A: 'text-red-600 font-bold', T: 'text-orange-500', D: 'text-purple-500',
+                      }
+                      return (
+                        <td key={p.pertemuan_ke} className={`px-2 py-2.5 text-center border-l border-gray-50 ${s ? warna[s] ?? '' : 'text-gray-300'}`}>
+                          {s ?? '-'}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      )}
     </div>
   )
 }
