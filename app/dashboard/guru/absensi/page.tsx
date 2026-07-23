@@ -19,6 +19,11 @@ interface AbsensiStatus {
   [siswaId: string]: 'H' | 'S' | 'I' | 'A' | 'T' | 'D'
 }
 
+interface RiwayatPertemuan {
+  pertemuan_ke: number
+  tanggal: string
+}
+
 const STATUS = [
   { kode: 'H', label: 'Hadir',      bg: 'bg-emerald-500', light: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   { kode: 'S', label: 'Sakit',      bg: 'bg-blue-500',    light: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -27,6 +32,11 @@ const STATUS = [
   { kode: 'T', label: 'Terlambat',  bg: 'bg-orange-500',  light: 'bg-orange-50 text-orange-700 border-orange-200' },
   { kode: 'D', label: 'Dispensasi', bg: 'bg-violet-500',  light: 'bg-violet-50 text-violet-700 border-violet-200' },
 ]
+
+function formatTgl(tgl: string) {
+  const d = new Date(tgl)
+  return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })
+}
 
 export default function AbsensiPage() {
   const supabase = createBrowserClient(
@@ -43,6 +53,7 @@ export default function AbsensiPage() {
   const [tanggal, setTanggal]           = useState(new Date().toISOString().split('T')[0])
   const [pertemuanKe, setPertemuanKe]   = useState(1)
   const [guruId, setGuruId]             = useState('')
+  const [riwayat, setRiwayat]           = useState<RiwayatPertemuan[]>([])
   const [loading, setLoading]           = useState(false)
   const [saving, setSaving]             = useState(false)
   const [message, setMessage]           = useState<{type: 'success'|'error', text: string} | null>(null)
@@ -110,6 +121,58 @@ export default function AbsensiPage() {
 
   const setStatus = (id: string, status: 'H'|'S'|'I'|'A'|'T'|'D') => {
     setAbsensi(p => ({ ...p, [id]: status }))
+  }
+
+  // Ambil riwayat pertemuan yang sudah pernah diinput untuk kelas & mapel ini,
+  // supaya guru langsung lihat sudah sampai pertemuan berapa (seperti kolom di absensi kertas)
+  // dan nomor pertemuan berikutnya otomatis tersaran.
+  useEffect(() => {
+    if (!selectedKelas || !selectedMapel) {
+      setRiwayat([])
+      return
+    }
+    const fetchRiwayat = async () => {
+      const { data } = await supabase
+        .from('absensi_mapel')
+        .select('pertemuan_ke, tanggal')
+        .eq('kelas_id', selectedKelas)
+        .eq('mapel_id', selectedMapel)
+        .eq('tahun_ajaran', '2026/2027')
+        .order('pertemuan_ke', { ascending: true })
+
+      if (data) {
+        const unik = Array.from(
+          new Map(data.map((d: any) => [d.pertemuan_ke, d])).values()
+        ) as RiwayatPertemuan[]
+        setRiwayat(unik)
+
+        const maxPertemuan = unik.length ? Math.max(...unik.map(u => u.pertemuan_ke)) : 0
+        setPertemuanKe(maxPertemuan + 1)
+      }
+    }
+    fetchRiwayat()
+  }, [selectedKelas, selectedMapel])
+
+  // Klik salah satu chip pertemuan lama untuk membuka & mengedit ulang absen hari itu
+  const bukaPertemuanLama = async (p: RiwayatPertemuan) => {
+    setPertemuanKe(p.pertemuan_ke)
+    setTanggal(p.tanggal)
+    if (!siswaList.length) return
+    const { data } = await supabase
+      .from('absensi_mapel')
+      .select('siswa_id, status')
+      .eq('kelas_id', selectedKelas)
+      .eq('mapel_id', selectedMapel)
+      .eq('pertemuan_ke', p.pertemuan_ke)
+      .eq('tahun_ajaran', '2026/2027')
+
+    if (data) {
+      setAbsensi(prev => {
+        const next = { ...prev }
+        data.forEach((row: any) => { next[row.siswa_id] = row.status })
+        return next
+      })
+    }
   }
 
   const handleSimpan = async () => {
@@ -204,6 +267,47 @@ export default function AbsensiPage() {
           </div>
         </div>
       </div>
+
+      {/* Agenda Pertemuan -- grid penuh 1-24 mirip kolom di buku absensi kertas,
+          supaya progress semester langsung kelihatan dan guru tidak lupa/dobel nomor */}
+      {selectedKelas && selectedMapel && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-700">Agenda Pertemuan Semester Ini</h2>
+            <span className="text-xs text-gray-400">{riwayat.length} dari 24</span>
+          </div>
+          <div className="grid grid-cols-8 sm:grid-cols-12 gap-1.5">
+            {Array.from({ length: 24 }, (_, i) => i + 1).map(no => {
+              const tercatat = riwayat.find(p => p.pertemuan_ke === no)
+              const isSekarang = no === pertemuanKe && !tercatat
+              const bisaDiklik = !!tercatat
+              return (
+                <button
+                  key={no}
+                  type="button"
+                  disabled={!bisaDiklik}
+                  onClick={() => tercatat && bukaPertemuanLama(tercatat)}
+                  title={tercatat ? `Pertemuan ke-${no} · ${formatTgl(tercatat.tanggal)}` : isSekarang ? 'Pertemuan hari ini (belum disimpan)' : `Pertemuan ke-${no} belum diisi`}
+                  className={`aspect-square rounded-md text-xs font-medium flex items-center justify-center transition-all ${
+                    isSekarang
+                      ? 'bg-[#eaf1fb] text-[#1a3a6b] border-[1.5px] border-dashed border-[#1a3a6b]/50'
+                      : tercatat
+                      ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer'
+                      : 'bg-gray-50 text-gray-300 border border-gray-100 cursor-default'
+                  }`}
+                >
+                  {no}
+                </button>
+              )
+            })}
+          </div>
+          <div className="flex gap-4 mt-3 text-[11px] text-gray-500">
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" />Sudah diisi</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-gray-200 inline-block" />Belum diisi</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm border-[1.5px] border-dashed border-[#1a3a6b]/50 inline-block" />Hari ini</span>
+          </div>
+        </div>
+      )}
 
       {/* Rekap Bar */}
       {siswaList.length > 0 && (
