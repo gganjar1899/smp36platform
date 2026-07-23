@@ -276,7 +276,7 @@ export default function AbsensiPage() {
             <h2 className="text-sm font-semibold text-gray-700">Agenda Pertemuan Semester Ini</h2>
             <span className="text-xs text-gray-400">{riwayat.length} dari 24</span>
           </div>
-          <div className="grid grid-cols-8 sm:grid-cols-12 gap-1.5">
+          <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-12 gap-1.5">
             {Array.from({ length: 24 }, (_, i) => i + 1).map(no => {
               const tercatat = riwayat.find(p => p.pertemuan_ke === no)
               const isSekarang = no === pertemuanKe && !tercatat
@@ -287,8 +287,8 @@ export default function AbsensiPage() {
                   type="button"
                   disabled={!bisaDiklik}
                   onClick={() => tercatat && bukaPertemuanLama(tercatat)}
-                  title={tercatat ? `Pertemuan ke-${no} · ${formatTgl(tercatat.tanggal)}` : isSekarang ? 'Pertemuan hari ini (belum disimpan)' : `Pertemuan ke-${no} belum diisi`}
-                  className={`aspect-square rounded-md text-xs font-medium flex items-center justify-center transition-all ${
+                  title={tercatat ? `Buka ulang pertemuan ke-${no} · ${formatTgl(tercatat.tanggal)} (data tersimpan tidak akan hilang)` : isSekarang ? 'Pertemuan hari ini (belum disimpan)' : `Pertemuan ke-${no} belum diisi`}
+                  className={`flex flex-col items-center justify-center gap-0.5 h-12 rounded-md text-xs font-medium transition-all ${
                     isSekarang
                       ? 'bg-[#eaf1fb] text-[#1a3a6b] border-[1.5px] border-dashed border-[#1a3a6b]/50'
                       : tercatat
@@ -296,7 +296,10 @@ export default function AbsensiPage() {
                       : 'bg-gray-50 text-gray-300 border border-gray-100 cursor-default'
                   }`}
                 >
-                  {no}
+                  <span className="font-bold leading-none">{no}</span>
+                  <span className={`text-[9px] leading-none ${tercatat ? 'opacity-80' : 'opacity-0'}`}>
+                    {tercatat ? formatTgl(tercatat.tanggal) : '-'}
+                  </span>
                 </button>
               )
             })}
