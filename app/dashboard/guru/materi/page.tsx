@@ -45,8 +45,8 @@ export default function MateriPage() {
       if (!userId) return
 
       const { data } = await supabase
-        .from('mapel_guru')
-        .select('mapel:mapel_id(id,nama), kelas:kelas_id(id,nama_rombel)')
+        .from('guru_mapel')
+        .select('mapel:mapel_id(id,nama:nama_mapel), kelas:kelas_id(id,nama_rombel)')
         .eq('guru_id', userId!)
         .eq('tahun_ajaran', '2026/2027')
 

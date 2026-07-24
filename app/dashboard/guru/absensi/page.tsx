@@ -126,53 +126,69 @@ export default function AbsensiPage() {
   // Ambil riwayat pertemuan yang sudah pernah diinput untuk kelas & mapel ini,
   // supaya guru langsung lihat sudah sampai pertemuan berapa (seperti kolom di absensi kertas)
   // dan nomor pertemuan berikutnya otomatis tersaran.
+  const fetchRiwayat = async () => {
+    if (!selectedKelas || !selectedMapel) { setRiwayat([]); return }
+    const { data } = await supabase
+      .from('absensi_mapel')
+      .select('pertemuan_ke, tanggal')
+      .eq('kelas_id', selectedKelas)
+      .eq('mapel_id', selectedMapel)
+      .order('pertemuan_ke', { ascending: true })
+
+    if (data) {
+      const unik = Array.from(
+        new Map(data.map((d: any) => [d.pertemuan_ke, d])).values()
+      ) as RiwayatPertemuan[]
+      setRiwayat(unik)
+      return unik
+    }
+    return []
+  }
+
   useEffect(() => {
-    if (!selectedKelas || !selectedMapel) {
-      setRiwayat([])
-      return
-    }
-    const fetchRiwayat = async () => {
-      const { data } = await supabase
-        .from('absensi_mapel')
-        .select('pertemuan_ke, tanggal')
-        .eq('kelas_id', selectedKelas)
-        .eq('mapel_id', selectedMapel)
-        .eq('tahun_ajaran', '2026/2027')
-        .order('pertemuan_ke', { ascending: true })
-
-      if (data) {
-        const unik = Array.from(
-          new Map(data.map((d: any) => [d.pertemuan_ke, d])).values()
-        ) as RiwayatPertemuan[]
-        setRiwayat(unik)
-
-        const maxPertemuan = unik.length ? Math.max(...unik.map(u => u.pertemuan_ke)) : 0
-        setPertemuanKe(maxPertemuan + 1)
-      }
-    }
-    fetchRiwayat()
+    fetchRiwayat().then(unik => {
+      const maxPertemuan = unik && unik.length ? Math.max(...unik.map(u => u.pertemuan_ke)) : 0
+      setPertemuanKe(maxPertemuan + 1)
+    })
   }, [selectedKelas, selectedMapel])
 
-  // Klik salah satu chip pertemuan lama untuk membuka & mengedit ulang absen hari itu
-  const bukaPertemuanLama = async (p: RiwayatPertemuan) => {
-    setPertemuanKe(p.pertemuan_ke)
-    setTanggal(p.tanggal)
-    if (!siswaList.length) return
+  // Muat ulang data absen tersimpan untuk pertemuan_ke & tanggal tertentu.
+  // Dipakai baik saat klik kotak agenda MAUPUN saat nomor pertemuan diketik/diubah manual,
+  // supaya tidak pernah balik ke "Hadir semua" kalau pertemuan itu sebenarnya sudah pernah diisi.
+  const muatDataPertemuan = async (pertemuan_ke: number) => {
+    if (!selectedKelas || !selectedMapel || !siswaList.length) return
     const { data } = await supabase
       .from('absensi_mapel')
       .select('siswa_id, status')
       .eq('kelas_id', selectedKelas)
       .eq('mapel_id', selectedMapel)
-      .eq('pertemuan_ke', p.pertemuan_ke)
-      .eq('tahun_ajaran', '2026/2027')
+      .eq('pertemuan_ke', pertemuan_ke)
 
-    if (data) {
+    if (data && data.length) {
       setAbsensi(prev => {
         const next = { ...prev }
         data.forEach((row: any) => { next[row.siswa_id] = row.status })
         return next
       })
     }
+  }
+
+  // Setiap kali nomor pertemuan berubah (baik klik grid atau ketik manual) dan nomor itu
+  // sudah pernah tersimpan sebelumnya, otomatis muat ulang data aslinya.
+  useEffect(() => {
+    if (!siswaList.length) return
+    const ada = riwayat.find(p => p.pertemuan_ke === pertemuanKe)
+    if (ada) {
+      setTanggal(ada.tanggal)
+      muatDataPertemuan(pertemuanKe)
+    }
+  }, [pertemuanKe, siswaList.length])
+
+  // Klik salah satu kotak agenda pertemuan lama untuk membuka & mengedit ulang absen hari itu
+  const bukaPertemuanLama = async (p: RiwayatPertemuan) => {
+    setPertemuanKe(p.pertemuan_ke)
+    setTanggal(p.tanggal)
+    await muatDataPertemuan(p.pertemuan_ke)
   }
 
   const handleSimpan = async () => {
@@ -202,6 +218,9 @@ export default function AbsensiPage() {
       : { type: 'success', text: 'Absensi berhasil disimpan!' }
     )
     setSaving(false)
+
+    // Refresh daftar riwayat supaya kotak agenda langsung berubah hijau tanpa perlu reload halaman
+    if (!error) fetchRiwayat()
   }
 
   const rekap = STATUS.reduce((acc, s) => {

@@ -104,8 +104,8 @@ export default function CBTGuruPage() {
         if (userRow?.nip) setGuruNip(userRow.nip)
 
         const { data: mengajar } = await supabase
-          .from('mapel_guru')
-          .select('kelas:kelas_id(nama_rombel), mapel:mapel_id(nama)')
+          .from('guru_mapel')
+          .select('kelas:kelas_id(nama_rombel), mapel:mapel_id(nama:nama_mapel)')
           .eq('guru_id', data.userId)
           .eq('tahun_ajaran', '2026/2027')
 
