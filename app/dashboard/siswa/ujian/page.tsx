@@ -26,10 +26,6 @@ export default function DaftarUjianSiswaPage() {
   const [ujianList, setUjianList] = useState<Ujian[]>([])
   const [sesiSaya, setSesiSaya] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
-  const [modalUjian, setModalUjian] = useState<Ujian | null>(null)
-  const [tokenInput, setTokenInput] = useState('')
-  const [errorToken, setErrorToken] = useState('')
-  const [memulai, setMemulai] = useState(false)
 
   useEffect(() => {
     async function init() {
@@ -67,29 +63,6 @@ export default function DaftarUjianSiswaPage() {
 
   useEffect(() => { fetchUjian() }, [fetchUjian])
 
-  const handleMulai = async () => {
-    if (!modalUjian) return
-    setErrorToken('')
-
-    const { data: ujianAsli } = await supabase.from('ujian').select('token, durasi_menit').eq('id', modalUjian.id).single()
-    if (!ujianAsli || ujianAsli.token.toUpperCase() !== tokenInput.trim().toUpperCase()) {
-      setErrorToken('Token salah. Tanyakan token yang benar ke guru mata pelajaran.')
-      return
-    }
-
-    setMemulai(true)
-    const statusSekarang = sesiSaya[modalUjian.id]
-    if (!statusSekarang) {
-      const { error } = await supabase.from('sesi_siswa').insert({
-        ujian_id: modalUjian.id, siswa_id: siswaId,
-        waktu_mulai: new Date().toISOString(), status: 'sedang_ujian',
-        sisa_detik: ujianAsli.durasi_menit * 60,
-      })
-      if (error) { setErrorToken('Gagal memulai ujian: ' + error.message); setMemulai(false); return }
-    }
-    router.push(`/dashboard/siswa/ujian/${modalUjian.id}`)
-  }
-
   return (
     <div className="p-3 sm:p-4 lg:p-6">
       <div className="mb-6">
@@ -119,12 +92,12 @@ export default function DaftarUjianSiswaPage() {
                 ) : status === 'diskualifikasi' ? (
                   <span className="inline-block px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-medium">Didiskualifikasi</span>
                 ) : status === 'sedang_ujian' ? (
-                  <button onClick={() => router.push(`/dashboard/siswa/ujian/${u.id}`)}
+                  <button onClick={() => router.push(`/ujian/${u.id}`)}
                     className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-medium transition">
                     Lanjutkan Mengerjakan →
                   </button>
                 ) : (
-                  <button onClick={() => { setModalUjian(u); setTokenInput(''); setErrorToken('') }}
+                  <button onClick={() => router.push(`/ujian/${u.id}`)}
                     className="px-4 py-2 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-lg text-sm font-medium transition">
                     Mulai Ujian
                   </button>
@@ -132,26 +105,6 @@ export default function DaftarUjianSiswaPage() {
               </div>
             )
           })}
-        </div>
-      )}
-
-      {modalUjian && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setModalUjian(null)}>
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
-            <h2 className="font-semibold text-gray-800 mb-1">{modalUjian.judul}</h2>
-            <p className="text-xs text-gray-500 mb-4">Masukkan token yang diberikan guru untuk mulai mengerjakan.</p>
-            <input type="text" value={tokenInput} onChange={e => setTokenInput(e.target.value.toUpperCase())}
-              placeholder="TOKEN"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center font-mono text-lg tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2" />
-            {errorToken && <p className="text-xs text-red-500 mb-3">{errorToken}</p>}
-            <div className="flex gap-3 mt-4">
-              <button onClick={() => setModalUjian(null)} className="flex-1 px-4 py-2 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition">Batal</button>
-              <button onClick={handleMulai} disabled={memulai || !tokenInput}
-                className="flex-1 px-4 py-2 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-lg text-sm font-semibold transition disabled:opacity-50">
-                {memulai ? 'Memulai...' : 'Mulai'}
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>
