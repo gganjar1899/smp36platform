@@ -247,6 +247,17 @@ export default function KerjakanUjianPage() {
       setTokenError('Token salah. Minta token yang benar ke gurumu.')
       return
     }
+
+    // Minta fullscreen SEBELUM proses async lain — beberapa browser (terutama Safari iOS)
+    // menolak permintaan fullscreen kalau tidak dipanggil langsung dari sentuhan/klik pengguna.
+    try {
+      const el = document.documentElement as any
+      if (el.requestFullscreen) el.requestFullscreen().catch(() => {})
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen()
+    } catch {
+      // tidak fatal, lanjutkan tanpa fullscreen kalau browser/perangkat tidak mendukung
+    }
+
     setStarting(true)
     const { data: sesiBaru, error } = await supabase
       .from('sesi_siswa')
@@ -339,6 +350,15 @@ export default function KerjakanUjianPage() {
     }
   }, [handleSubmit])
 
+  // Keluar dari fullscreen otomatis begitu ujian selesai/diskualifikasi
+  useEffect(() => {
+    if (step === 'selesai' || step === 'diskualifikasi') {
+      const el = document as any
+      if (el.fullscreenElement && el.exitFullscreen) el.exitFullscreen().catch(() => {})
+      else if (el.webkitFullscreenElement && el.webkitExitFullscreen) el.webkitExitFullscreen()
+    }
+  }, [step])
+
   // ====== TIMER ======
   useEffect(() => {
     if (step !== 'ujian' || !sesi) return
@@ -417,6 +437,63 @@ export default function KerjakanUjianPage() {
       window.removeEventListener('pagehide', handleVisibility)
     }
   }, [step, sesi, ujian, sisaDetik])
+
+  // ====== ANTI-CHEAT: DETEKSI KELUAR DARI MODE LAYAR PENUH ======
+  const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false)
+  useEffect(() => {
+    if (step !== 'ujian' || !sesi || !ujian) return
+
+    const handleFullscreenChange = async () => {
+      const masihFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement)
+      if (masihFullscreen) { setShowFullscreenPrompt(false); return }
+
+      setShowFullscreenPrompt(true)
+
+      const strikeBaru = (sesi.jumlah_strike ?? 0) + 1
+      setSesi((prev) => (prev ? { ...prev, jumlah_strike: strikeBaru } : prev))
+
+      const maks = ujian.maks_peringatan ?? 3
+      const akanDiskualifikasi = strikeBaru >= maks
+
+      await supabase.from('sesi_siswa').update({ jumlah_strike: strikeBaru }).eq('id', sesi.id)
+      await supabase.from('log_pelanggaran').insert({
+        sesi_id: sesi.id,
+        jenis_pelanggaran: 'keluar_fullscreen',
+        status: akanDiskualifikasi ? 'diskualifikasi' : 'peringatan',
+        strike_ke: strikeBaru,
+        sisa_waktu: formatWaktu(sisaDetik),
+        platform: navigator.platform,
+        user_agent: navigator.userAgent,
+      })
+
+      if (akanDiskualifikasi) {
+        setStrikeToast(`🔴 Ujian dihentikan otomatis: terdeteksi ${strikeBaru}x keluar dari layar penuh.`)
+        submitRef.current(true)
+      } else {
+        setStrikeToast(`⚠️ Peringatan ${strikeBaru}/${maks}: tetap di mode layar penuh selama ujian!`)
+        if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current)
+        toastTimeoutRef.current = setTimeout(() => setStrikeToast(''), 5000)
+      }
+    }
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
+    }
+  }, [step, sesi, ujian, sisaDetik])
+
+  const kembaliFullscreen = async () => {
+    try {
+      const el = document.documentElement as any
+      if (el.requestFullscreen) await el.requestFullscreen()
+      else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen()
+      setShowFullscreenPrompt(false)
+    } catch {
+      // biarkan prompt tetap tampil kalau browser menolak
+    }
+  }
 
   // ====== AUTOSAVE JAWABAN ======
   const simpanJawaban = useCallback(
@@ -624,6 +701,16 @@ export default function KerjakanUjianPage() {
       {strikeToast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg max-w-[90vw] text-center">
           {strikeToast}
+        </div>
+      )}
+
+      {showFullscreenPrompt && (
+        <div className="fixed inset-x-0 bottom-0 z-50 bg-amber-500 text-white px-4 py-3 flex items-center justify-between gap-3 shadow-lg">
+          <p className="text-xs sm:text-sm font-medium">Kamu keluar dari mode layar penuh. Tetap di layar penuh selama ujian.</p>
+          <button onClick={kembaliFullscreen}
+            className="px-3 py-1.5 bg-white text-amber-600 rounded-lg text-xs font-semibold flex-shrink-0 hover:bg-amber-50 transition">
+            Layar Penuh Lagi
+          </button>
         </div>
       )}
 
