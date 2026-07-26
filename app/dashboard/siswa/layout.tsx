@@ -25,12 +25,27 @@ const menuItems = [
   {
     group: 'UJIAN',
     items: [
-      { href: '/cbt', label: 'Mulai Ujian CBT', exact: false, icon: (
+      { href: '/dashboard/siswa/tugas', label: 'Tugas', exact: false, icon: (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+      )},
+      { href: '/dashboard/siswa/ujian', label: 'Ujian', exact: false, icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      )},
+      { href: '/dashboard/siswa/hasil', label: 'Hasil Ujian', exact: false, icon: (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
       )},
     ]
   },
 ]
+
+const logoutItem = {
+  href: '/api/auth/logout', label: 'Keluar', icon: (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+  )
+}
+
+// Semua item digabung jadi satu baris buat bottom nav mobile (tanpa grouping)
+const mobileNavItems = menuItems.flatMap(g => g.items)
 
 export default function SiswaLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -48,7 +63,8 @@ export default function SiswaLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen bg-[#f4f5fb] flex font-sans">
-      <aside className={`${collapsed ? 'w-[72px]' : 'w-[240px]'} transition-all duration-300 bg-white border-r border-gray-100 min-h-screen flex flex-col shadow-sm flex-shrink-0`}>
+      {/* Sidebar — cuma tampil dari tablet ke atas, di HP diganti bottom nav */}
+      <aside className={`hidden md:flex ${collapsed ? 'w-[72px]' : 'w-[240px]'} transition-all duration-300 bg-white border-r border-gray-100 min-h-screen flex-col shadow-sm flex-shrink-0`}>
         <div className="h-16 flex items-center px-5 border-b border-gray-100 gap-3">
           <div className="w-8 h-8 rounded-lg bg-[#1a3a6b] flex items-center justify-center flex-shrink-0">
             <span className="text-white font-bold text-xs">36</span>
@@ -106,26 +122,52 @@ export default function SiswaLayout({ children }: { children: React.ReactNode })
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 bg-white border-b border-gray-100 px-6 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-4">
+        <header className="h-16 bg-white border-b border-gray-100 px-4 md:px-6 flex items-center justify-between shadow-sm flex-shrink-0">
+          <div className="flex items-center gap-3 md:gap-4 min-w-0">
             <button onClick={() => setCollapsed(!collapsed)}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-all">
+              className="hidden md:flex w-8 h-8 rounded-lg items-center justify-center text-gray-400 hover:bg-gray-100 transition-all flex-shrink-0">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7"/>
               </svg>
             </button>
-            <div>
-              <p className="text-sm font-semibold text-gray-800">Portal Siswa — SMPN 36</p>
-              <p className="text-xs text-gray-400">Tahun Ajaran 2026/2027 · Semester 1</p>
+            <div className="md:hidden w-7 h-7 rounded-lg bg-[#1a3a6b] flex items-center justify-center flex-shrink-0">
+              <span className="text-white font-bold text-[10px]">36</span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-800 truncate">Portal Siswa — SMPN 36</p>
+              <p className="text-xs text-gray-400 truncate">Tahun Ajaran 2026/2027 · Semester 1</p>
             </div>
           </div>
-          <div className="w-8 h-8 rounded-full bg-[#1a3a6b] flex items-center justify-center text-white text-xs font-bold">{initial}</div>
+          <div className="w-8 h-8 rounded-full bg-[#1a3a6b] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{initial}</div>
         </header>
-        <main className="flex-1 p-6 overflow-auto">{children}</main>
-        <footer className="px-6 py-2 border-t border-gray-100">
+
+        <main className="flex-1 p-4 md:p-6 overflow-auto pb-24 md:pb-6">{children}</main>
+
+        <footer className="hidden md:block px-6 py-2 border-t border-gray-100">
           <p className="text-[11px] text-gray-300 text-center">2026 SMP Negeri 36 Bandung</p>
         </footer>
       </div>
+
+      {/* Bottom nav — cuma tampil di HP (di bawah breakpoint md) */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-100 shadow-[0_-2px_8px_rgba(0,0,0,0.06)] flex items-stretch overflow-x-auto pb-[env(safe-area-inset-bottom)]">
+        {mobileNavItems.map(item => {
+          const isActive = item.exact ? pathname === item.href : pathname.startsWith(item.href)
+          return (
+            <Link key={item.href} href={item.href}
+              className={`flex-1 min-w-[60px] flex flex-col items-center justify-center gap-0.5 py-2 transition-colors ${
+                isActive ? 'text-[#1a3a6b]' : 'text-gray-400'
+              }`}>
+              <span className="flex-shrink-0">{item.icon}</span>
+              <span className="text-[10px] font-medium truncate max-w-[60px]">{item.label}</span>
+            </Link>
+          )
+        })}
+        <a href={logoutItem.href}
+          className="flex-1 min-w-[60px] flex flex-col items-center justify-center gap-0.5 py-2 text-red-400">
+          <span className="flex-shrink-0">{logoutItem.icon}</span>
+          <span className="text-[10px] font-medium truncate max-w-[60px]">{logoutItem.label}</span>
+        </a>
+      </nav>
     </div>
   )
 }
