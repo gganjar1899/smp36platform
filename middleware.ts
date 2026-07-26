@@ -24,9 +24,9 @@ export function middleware(request: NextRequest) {
   }
 
   const roleAccess: Record<string, string[]> = {
-    siswa: ['/dashboard/siswa'],
+    siswa: ['/dashboard/siswa', '/ujian'],
     guru:  ['/dashboard/guru'],
-    admin: ['/dashboard/admin', '/dashboard/guru', '/dashboard/siswa'],
+    admin: ['/dashboard/admin', '/dashboard/guru', '/dashboard/siswa', '/ujian'],
   }
 
   const allowed = roleAccess[role] ?? []
