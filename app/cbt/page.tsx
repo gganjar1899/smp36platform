@@ -38,12 +38,13 @@ type Pertanyaan = {
 type WarningLevel = 0 | 1 | 2 | 3
 
 export default function CBTSiswaPage() {
-  const [step, setStep] = useState<'login' | 'pilih' | 'intro' | 'ujian' | 'selesai'>('login')
+  const [step, setStep] = useState<'login' | 'token' | 'intro' | 'ujian' | 'selesai'>('login')
   const [nis, setNis] = useState('')
   const [namaSiswa, setNamaSiswa] = useState('')
   const [kelas, setKelas] = useState('')
   const [loginError, setLoginError] = useState('')
-  const [soalList, setSoalList] = useState<Soal[]>([])
+  const [tokenInput, setTokenInput] = useState('')
+  const [tokenError, setTokenError] = useState('')
   const [selectedSoal, setSelectedSoal] = useState<Soal | null>(null)
   const [pertanyaanList, setPertanyaanList] = useState<Pertanyaan[]>([])
   const [jawaban, setJawaban] = useState<Record<string, string>>({})
@@ -51,6 +52,7 @@ export default function CBTSiswaPage() {
   const [currentNo, setCurrentNo] = useState(0)
   const [sisa, setSisa] = useState(0)
   const [hasilId, setHasilId] = useState('')
+  const [waktuMulaiSesi, setWaktuMulaiSesi] = useState<string | null>(null)
   const [nilaiAkhir, setNilaiAkhir] = useState(0)
   const [jumlahBenar, setJumlahBenar] = useState(0)
 
@@ -89,6 +91,32 @@ export default function CBTSiswaPage() {
     setIsFullscreen(true)
   }, [])
 
+  // Catat pelanggaran langsung ke database (real-time), supaya guru bisa pantau saat itu juga
+  const catatPelanggaran = useCallback(async (jenis: string) => {
+    if (!hasilId) return
+    try {
+      const { data: current } = await supabase.from('hasil_cbt')
+        .select('jumlah_pelanggaran, detail_pelanggaran').eq('id', hasilId).single()
+      const detailBaru = [...(current?.detail_pelanggaran || []), { jenis, waktu: new Date().toISOString() }]
+      await supabase.from('hasil_cbt').update({
+        jumlah_pelanggaran: (current?.jumlah_pelanggaran || 0) + 1,
+        detail_pelanggaran: detailBaru,
+        last_activity: new Date().toISOString(),
+      }).eq('id', hasilId)
+    } catch (err) {
+      console.error('[cbt] gagal mencatat pelanggaran:', err)
+    }
+  }, [hasilId])
+
+  // Heartbeat -- update last_activity tiap 15 detik selagi ujian berlangsung, jadi guru tahu siapa yang masih aktif online
+  useEffect(() => {
+    if (step !== 'ujian' || !hasilId) return
+    const hb = setInterval(() => {
+      supabase.from('hasil_cbt').update({ last_activity: new Date().toISOString() }).eq('id', hasilId)
+    }, 15000)
+    return () => clearInterval(hb)
+  }, [step, hasilId])
+
   // Setup anti-cheat saat ujian dimulai
   useEffect(() => {
     if (step !== 'ujian') return
@@ -100,6 +128,7 @@ export default function CBTSiswaPage() {
     const handleVisibility = () => {
       if (document.hidden) {
         tabSwitchCount++
+        catatPelanggaran('keluar_tab')
         if (tabSwitchCount === 1) {
           triggerWarning(1, '⚠️ Peringatan 1: Jangan berpindah tab atau aplikasi lain!')
         } else if (tabSwitchCount === 2) {
@@ -116,6 +145,7 @@ export default function CBTSiswaPage() {
     const handleCopy = (e: ClipboardEvent) => {
       e.preventDefault()
       copyAttempts++
+      catatPelanggaran('copy_paste')
       triggerWarning(1, '⚠️ Copy-paste tidak diizinkan selama ujian!')
     }
     const handlePaste = (e: ClipboardEvent) => { e.preventDefault() }
@@ -124,6 +154,7 @@ export default function CBTSiswaPage() {
     // Right click prevention
     const handleRightClick = (e: MouseEvent) => {
       e.preventDefault()
+      catatPelanggaran('klik_kanan')
       triggerWarning(1, '⚠️ Klik kanan tidak diizinkan selama ujian!')
     }
 
@@ -138,6 +169,7 @@ export default function CBTSiswaPage() {
         e.key === 'PrintScreen'
       ) {
         e.preventDefault()
+        catatPelanggaran('shortcut_keyboard')
         triggerWarning(1, '⚠️ Shortcut keyboard tidak diizinkan selama ujian!')
       }
     }
@@ -147,9 +179,13 @@ export default function CBTSiswaPage() {
       const isFS = !!(document.fullscreenElement || (document as any).webkitFullscreenElement)
       setIsFullscreen(isFS)
       if (!isFS && step === 'ujian') {
+        catatPelanggaran('keluar_fullscreen')
         triggerWarning(2, '🚨 Fullscreen dinonaktifkan! Klik tombol di bawah untuk kembali ke fullscreen.')
       }
     }
+
+    // Cegah seleksi teks (blokir bubble "Copy" dari long-press di HP)
+    const handleSelectStart = (e: Event) => { e.preventDefault() }
 
     document.addEventListener('visibilitychange', handleVisibility)
     document.addEventListener('copy', handleCopy)
@@ -157,6 +193,7 @@ export default function CBTSiswaPage() {
     document.addEventListener('cut', handleCut)
     document.addEventListener('contextmenu', handleRightClick)
     document.addEventListener('keydown', handleKeydown)
+    document.addEventListener('selectstart', handleSelectStart)
     document.addEventListener('fullscreenchange', handleFullscreenChange)
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
 
@@ -167,10 +204,11 @@ export default function CBTSiswaPage() {
       document.removeEventListener('cut', handleCut)
       document.removeEventListener('contextmenu', handleRightClick)
       document.removeEventListener('keydown', handleKeydown)
+      document.removeEventListener('selectstart', handleSelectStart)
       document.removeEventListener('fullscreenchange', handleFullscreenChange)
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
     }
-  }, [step, triggerWarning])
+  }, [step, triggerWarning, catatPelanggaran])
 
   // Login siswa
   const handleLogin = async () => {
@@ -180,19 +218,31 @@ export default function CBTSiswaPage() {
     if (!data) { setLoginError('NIS tidak ditemukan. Hubungi guru jika ada masalah.'); return }
     setNamaSiswa(data.nama)
     setKelas(data.kelas)
-    const { data: soalData } = await supabase.from('soal_cbt').select('*')
-      .eq('status', 'Aktif').eq('kelas', data.kelas).order('created_at', { ascending: false })
-    setSoalList(soalData || [])
-    setStep('pilih')
+    setStep('token')
   }
 
-  const handlePilihSoal = async (soal: Soal) => {
-    const { data: existing } = await supabase.from('hasil_cbt')
-      .select('*').eq('soal_id', soal.id).eq('nis', nis).single()
-    if (existing?.status === 'Selesai') {
-      alert('Kamu sudah menyelesaikan ujian ini!')
+  // Verifikasi token yang diberikan guru -- langsung menuju ujian yang sesuai, tanpa perlu memilih dari daftar
+  const handleVerifikasiToken = async () => {
+    setTokenError('')
+    if (!tokenInput) { setTokenError('Token wajib diisi'); return }
+    const { data: soal } = await supabase.from('soal_cbt').select('*')
+      .eq('token', tokenInput.trim().toUpperCase())
+      .eq('status', 'Aktif')
+      .eq('kelas', kelas)
+      .maybeSingle()
+
+    if (!soal) {
+      setTokenError('Token tidak valid, sudah tidak aktif, atau bukan untuk kelasmu. Tanyakan lagi ke guru.')
       return
     }
+
+    const { data: existing } = await supabase.from('hasil_cbt')
+      .select('*').eq('soal_id', soal.id).eq('nis', nis).maybeSingle()
+    if (existing?.status === 'Selesai') {
+      setTokenError('Kamu sudah menyelesaikan ujian ini sebelumnya.')
+      return
+    }
+
     setSelectedSoal(soal)
     let { data: pertanyaan } = await supabase.from('pertanyaan_cbt')
       .select('*').eq('soal_id', soal.id).order('nomor')
@@ -202,6 +252,7 @@ export default function CBTSiswaPage() {
     setPertanyaanList(pertanyaan || [])
     if (existing?.jawaban) setJawaban(existing.jawaban)
     setHasilId(existing?.id || '')
+    setWaktuMulaiSesi(existing?.waktu_mulai || null)
     setStep('intro')
   }
 
@@ -209,17 +260,32 @@ export default function CBTSiswaPage() {
     if (!selectedSoal) return
     // Request fullscreen
     requestFullscreen()
-    setSisa(selectedSoal.durasi_menit * 60)
+
+    // Kalau ini melanjutkan sesi lama, hitung sisa waktu dari waktu mulai ASLI
+    // -- supaya refresh/tutup HP tidak bisa dipakai untuk mendapat waktu tambahan
+    const waktuMulaiAsli = waktuMulaiSesi ?? new Date().toISOString()
+    const detikTerpakai = Math.floor((Date.now() - new Date(waktuMulaiAsli).getTime()) / 1000)
+    const sisaWaktu = Math.max(0, selectedSoal.durasi_menit * 60 - detikTerpakai)
+
+    setSisa(sisaWaktu)
     setCurrentNo(0)
-    setJawaban({})
     setRaguList(new Set())
     setWarningLevel(0)
     setCheating(false)
 
+    if (sisaWaktu <= 0) {
+      // Waktu sudah habis dari sesi sebelumnya -- langsung submit
+      setStep('ujian')
+      setTimeout(() => submitRef.current?.(), 500)
+      return
+    }
+
     const { data } = await supabase.from('hasil_cbt').upsert({
       soal_id: selectedSoal.id, nis, nama_siswa: namaSiswa, kelas,
-      status: 'Berlangsung', waktu_mulai: new Date().toISOString(), jawaban: {}
-    }, { onConflict: 'soal_id,nis' }).select().single()
+      status: 'Berlangsung', waktu_mulai: waktuMulaiAsli,
+      jawaban, // pakai jawaban yang sudah dimuat (kalau melanjutkan sesi), jangan direset ke kosong
+      last_activity: new Date().toISOString(),
+    }, { onConflict: 'soal_id,nis', ignoreDuplicates: false }).select().single()
     if (data) setHasilId(data.id)
     setStep('ujian')
   }
@@ -320,10 +386,10 @@ export default function CBTSiswaPage() {
     </div>
   )
 
-  // ====== PILIH SOAL ======
-  if (step === 'pilih') return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-2xl mx-auto">
+  // ====== TOKEN ======
+  if (step === 'token') return (
+    <div className="min-h-screen bg-gray-50 p-4 flex items-center justify-center">
+      <div className="max-w-sm w-full">
         <div className="bg-white rounded-2xl p-5 mb-5 border border-gray-200 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold text-sm">
@@ -336,38 +402,29 @@ export default function CBTSiswaPage() {
           </div>
         </div>
 
-        <h2 className="font-bold text-gray-800 mb-3 px-1">Ujian Tersedia</h2>
-        {soalList.length === 0 ? (
-          <div className="bg-white rounded-2xl p-12 text-center border border-gray-200">
-            <div className="text-4xl mb-3">📭</div>
-            <p className="text-gray-500 font-medium">Tidak ada ujian aktif saat ini</p>
-            <p className="text-xs text-gray-400 mt-1">Tunggu instruksi dari guru</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {soalList.map(s => (
-              <button key={s.id} onClick={() => handlePilihSoal(s)}
-                className="w-full bg-white rounded-2xl p-5 border border-gray-200 hover:border-blue-300 hover:shadow-md transition text-left group">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className={`px-2 py-0.5 rounded-lg text-xs font-medium ${s.mata_pelajaran === 'Informatika' ? 'bg-purple-50 text-purple-700' : 'bg-teal-50 text-teal-700'}`}>
-                        {s.mata_pelajaran}
-                      </span>
-                      <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                      <span className="text-xs text-green-600 font-medium">Aktif</span>
-                    </div>
-                    <p className="font-semibold text-gray-800 mb-1">{s.judul}</p>
-                    <p className="text-xs text-gray-500">⏱️ {s.durasi_menit} menit · 📝 {s.jumlah_soal} soal · {s.acak_soal ? '🔀 Acak' : '📋 Urut'}</p>
-                  </div>
-                  <svg className="w-5 h-5 text-gray-300 group-hover:text-blue-500 transition flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200 text-center">
+          <div className="text-3xl mb-2">🔑</div>
+          <h2 className="text-lg font-bold text-gray-800">Masukkan Token Ujian</h2>
+          <p className="text-xs text-gray-500 mt-1 mb-5">Minta token dari guru mata pelajaran sebelum mulai</p>
+          <input
+            type="text"
+            value={tokenInput}
+            onChange={e => setTokenInput(e.target.value.toUpperCase())}
+            onKeyDown={e => e.key === 'Enter' && handleVerifikasiToken()}
+            placeholder="Contoh: A3F9K2"
+            maxLength={6}
+            className="w-full text-center tracking-[0.4em] font-mono font-bold text-xl px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 uppercase"
+          />
+          {tokenError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 mt-3">
+              <p className="text-red-600 text-xs">{tokenError}</p>
+            </div>
+          )}
+          <button onClick={handleVerifikasiToken}
+            className="w-full mt-4 py-3 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-xl font-semibold transition shadow-md">
+            Buka Ujian →
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -425,7 +482,7 @@ export default function CBTSiswaPage() {
 
   // ====== UJIAN ======
   if (step === 'ujian' && p) return (
-    <div className="min-h-screen bg-gray-50 select-none" style={{ userSelect: 'none' }}>
+    <div className="min-h-screen bg-gray-50 select-none" style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}>
 
       {/* Warning Overlay */}
       {showWarning && (

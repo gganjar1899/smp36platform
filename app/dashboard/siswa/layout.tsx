@@ -25,14 +25,8 @@ const menuItems = [
   {
     group: 'UJIAN',
     items: [
-      { href: '/dashboard/siswa/tugas', label: 'Tugas', exact: false, icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-      )},
-      { href: '/dashboard/siswa/ujian', label: 'Mulai Ujian CBT', exact: false, icon: (
+      { href: '/cbt', label: 'Mulai Ujian CBT', exact: false, icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-      )},
-      { href: '/dashboard/siswa/hasil', label: 'Hasil Ujian', exact: false, icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
       )},
     ]
   },
@@ -41,40 +35,28 @@ const menuItems = [
 export default function SiswaLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const [userName, setUserName] = useState('Siswa')
+  const [userName, setUserName]   = useState('Siswa')
 
   useEffect(() => {
+    // Fix: decode nama dari cookie
     const namaCookie = document.cookie.split('; ')
       .find(r => r.startsWith('smpn36_user_nama='))?.split('=')[1]
     if (namaCookie) setUserName(decodeURIComponent(namaCookie))
   }, [])
 
-  useEffect(() => { setMobileOpen(false) }, [pathname])
-
   const initial = userName.charAt(0).toUpperCase()
 
   return (
     <div className="min-h-screen bg-[#f4f5fb] flex font-sans">
-      {mobileOpen && (
-        <div className="fixed inset-0 bg-black/40 z-30 lg:hidden" onClick={() => setMobileOpen(false)} />
-      )}
-
-      <aside className={`
-        ${collapsed ? 'lg:w-[72px]' : 'lg:w-[240px]'}
-        w-[240px] transition-all duration-300 bg-white border-r border-gray-100
-        min-h-screen flex flex-col shadow-sm flex-shrink-0
-        fixed lg:static inset-y-0 left-0 z-40
-        ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0
-      `}>
+      <aside className={`${collapsed ? 'w-[72px]' : 'w-[240px]'} transition-all duration-300 bg-white border-r border-gray-100 min-h-screen flex flex-col shadow-sm flex-shrink-0`}>
         <div className="h-16 flex items-center px-5 border-b border-gray-100 gap-3">
           <div className="w-8 h-8 rounded-lg bg-[#1a3a6b] flex items-center justify-center flex-shrink-0">
             <span className="text-white font-bold text-xs">36</span>
           </div>
           {!collapsed && (
-            <div className="overflow-hidden">
-              <p className="text-[#1a3a6b] font-bold text-sm leading-tight whitespace-nowrap">SMPN 36</p>
-              <p className="text-gray-400 text-xs whitespace-nowrap">Portal Siswa</p>
+            <div>
+              <p className="text-[#1a3a6b] font-bold text-sm leading-tight">SMPN 36</p>
+              <p className="text-gray-400 text-xs">Portal Siswa</p>
             </div>
           )}
         </div>
@@ -124,27 +106,22 @@ export default function SiswaLayout({ children }: { children: React.ReactNode })
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 bg-white border-b border-gray-100 px-4 lg:px-6 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-3 lg:gap-4 min-w-0">
-            <button
-              onClick={() => {
-                if (window.innerWidth < 1024) setMobileOpen(o => !o)
-                else setCollapsed(c => !c)
-              }}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-all flex-shrink-0"
-            >
+        <header className="h-16 bg-white border-b border-gray-100 px-6 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setCollapsed(!collapsed)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-all">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7"/>
               </svg>
             </button>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-800 truncate">Portal Siswa — SMPN 36</p>
-              <p className="text-xs text-gray-400 hidden sm:block">Tahun Ajaran 2026/2027 · Semester 1</p>
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Portal Siswa — SMPN 36</p>
+              <p className="text-xs text-gray-400">Tahun Ajaran 2026/2027 · Semester 1</p>
             </div>
           </div>
-          <div className="w-8 h-8 rounded-full bg-[#1a3a6b] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{initial}</div>
+          <div className="w-8 h-8 rounded-full bg-[#1a3a6b] flex items-center justify-center text-white text-xs font-bold">{initial}</div>
         </header>
-        <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-auto">{children}</main>
+        <main className="flex-1 p-6 overflow-auto">{children}</main>
         <footer className="px-6 py-2 border-t border-gray-100">
           <p className="text-[11px] text-gray-300 text-center">2026 SMP Negeri 36 Bandung</p>
         </footer>
