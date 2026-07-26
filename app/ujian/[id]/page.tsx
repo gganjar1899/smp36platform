@@ -491,7 +491,7 @@ export default function KerjakanUjianPage() {
   if (step === 'error') {
     return (
       <div className="min-h-screen bg-[#f4f5fb] flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-sm w-full text-center">
+        <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 max-w-sm w-full text-center">
           <div className="text-4xl mb-3">🚫</div>
           <h2 className="text-lg font-bold text-gray-800 mb-2">Tidak Bisa Membuka Ujian</h2>
           <p className="text-sm text-gray-500 mb-6">{errorMsg}</p>
@@ -509,7 +509,7 @@ export default function KerjakanUjianPage() {
   if (step === 'intro') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#1a3a6b] to-[#2d5a9e] flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full">
+        <div className="bg-white rounded-3xl shadow-2xl p-6 sm:p-8 max-w-md w-full">
           <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-blue-50 text-[#1a3a6b] mb-2">
             {JENIS_LABEL[ujian?.jenis_ujian ?? ''] ?? ujian?.jenis_ujian}
           </span>
@@ -567,7 +567,7 @@ export default function KerjakanUjianPage() {
   if (step === 'diskualifikasi') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#1a3a6b] to-[#2d5a9e] flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center">
+        <div className="bg-white rounded-3xl shadow-2xl p-6 sm:p-8 max-w-sm w-full text-center">
           <div className="text-5xl mb-4">⚠️</div>
           <h2 className="text-xl font-bold text-gray-800 mb-1">Ujian Dihentikan</h2>
           <p className="text-sm text-gray-500 mb-4">{ujian?.judul}</p>
@@ -589,7 +589,7 @@ export default function KerjakanUjianPage() {
   if (step === 'selesai') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#1a3a6b] to-[#2d5a9e] flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center">
+        <div className="bg-white rounded-3xl shadow-2xl p-6 sm:p-8 max-w-sm w-full text-center">
           <div className="text-5xl mb-4">🎉</div>
           <h2 className="text-xl font-bold text-gray-800 mb-1">Ujian Selesai!</h2>
           <p className="text-sm text-gray-500 mb-1">{ujian?.judul}</p>
@@ -654,7 +654,7 @@ export default function KerjakanUjianPage() {
             <span className="text-xs text-gray-500 flex-shrink-0">{jumlahDijawab}/{soalList.length} dijawab</span>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-4 shadow-sm">
+          <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6 mb-4 shadow-sm">
             <div className="flex items-start gap-3 mb-5">
               <span className="w-9 h-9 bg-[#1a3a6b] text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 shadow-md">
                 {currentNo + 1}
