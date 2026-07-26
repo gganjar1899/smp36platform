@@ -35,6 +35,7 @@ const menuItems = [
 export default function SiswaLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const [userName, setUserName]   = useState('Siswa')
 
   useEffect(() => {
@@ -44,11 +45,30 @@ export default function SiswaLayout({ children }: { children: React.ReactNode })
     if (namaCookie) setUserName(decodeURIComponent(namaCookie))
   }, [])
 
+  // Tutup menu mobile otomatis setiap kali pindah halaman
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [pathname])
+
   const initial = userName.charAt(0).toUpperCase()
 
   return (
     <div className="min-h-screen bg-[#f4f5fb] flex font-sans">
-      <aside className={`${collapsed ? 'w-[72px]' : 'w-[240px]'} transition-all duration-300 bg-white border-r border-gray-100 min-h-screen flex flex-col shadow-sm flex-shrink-0`}>
+      {/* Overlay gelap saat menu mobile terbuka */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-30 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      <aside className={`
+        ${collapsed ? 'lg:w-[72px]' : 'lg:w-[240px]'}
+        w-[240px] transition-all duration-300 bg-white border-r border-gray-100
+        min-h-screen flex flex-col shadow-sm flex-shrink-0
+        fixed lg:static inset-y-0 left-0 z-40
+        ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0
+      `}>
         <div className="h-16 flex items-center px-5 border-b border-gray-100 gap-3">
           <div className="w-8 h-8 rounded-lg bg-[#1a3a6b] flex items-center justify-center flex-shrink-0">
             <span className="text-white font-bold text-xs">36</span>
@@ -106,22 +126,28 @@ export default function SiswaLayout({ children }: { children: React.ReactNode })
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 bg-white border-b border-gray-100 px-6 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setCollapsed(!collapsed)}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-all">
+        <header className="h-16 bg-white border-b border-gray-100 px-4 lg:px-6 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3 lg:gap-4 min-w-0">
+            {/* Tombol hamburger: buka menu mobile di layar kecil, collapse sidebar di desktop */}
+            <button
+              onClick={() => {
+                if (window.innerWidth < 1024) setMobileOpen(o => !o)
+                else setCollapsed(c => !c)
+              }}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-all flex-shrink-0"
+            >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7"/>
               </svg>
             </button>
-            <div>
-              <p className="text-sm font-semibold text-gray-800">Portal Siswa — SMPN 36</p>
-              <p className="text-xs text-gray-400">Tahun Ajaran 2026/2027 · Semester 1</p>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-800 truncate">Portal Siswa — SMPN 36</p>
+              <p className="text-xs text-gray-400 hidden sm:block">Tahun Ajaran 2026/2027 · Semester 1</p>
             </div>
           </div>
-          <div className="w-8 h-8 rounded-full bg-[#1a3a6b] flex items-center justify-center text-white text-xs font-bold">{initial}</div>
+          <div className="w-8 h-8 rounded-full bg-[#1a3a6b] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{initial}</div>
         </header>
-        <main className="flex-1 p-6 overflow-auto">{children}</main>
+        <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-auto">{children}</main>
         <footer className="px-6 py-2 border-t border-gray-100">
           <p className="text-[11px] text-gray-300 text-center">2026 SMP Negeri 36 Bandung</p>
         </footer>
