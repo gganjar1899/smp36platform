@@ -10,191 +10,149 @@ const supabase = createBrowserClient(
 )
 
 type Ujian = {
-  id: string
-  judul: string
-  jenis_ujian: string
-  durasi_menit: number
-  status: 'draft' | 'aktif' | 'selesai' | 'dibatalkan'
-  created_at: string
+  id: string; judul: string; jenis_ujian: string; durasi_menit: number
   mapel?: { nama_mapel: string }
 }
-
-type Sesi = {
-  id: string
-  ujian_id: string
-  status: 'belum_mulai' | 'sedang_ujian' | 'selesai' | 'diskualifikasi'
-  nilai_akhir: number | null
-}
+type SesiRingkas = { ujian_id: string; status: string }
 
 const JENIS_LABEL: Record<string, string> = {
-  ulangan_harian: 'Ulangan Harian',
-  pts: 'PTS',
-  pas: 'PAS',
-  asat: 'ASAT',
-  tugas: 'Tugas',
+  ulangan_harian: 'Ulangan Harian', pts: 'PTS', pas: 'PAS', asat: 'ASAT', tugas: 'Tugas',
 }
 
-const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
-  belum_mulai: { label: 'Belum Dikerjakan', cls: 'bg-gray-100 text-gray-600' },
-  sedang_ujian: { label: 'Sedang Berlangsung', cls: 'bg-green-50 text-green-700' },
-  selesai: { label: 'Selesai', cls: 'bg-blue-50 text-blue-700' },
-  diskualifikasi: { label: 'Didiskualifikasi', cls: 'bg-red-50 text-red-700' },
-}
-
-export default function UjianSiswaPage() {
+export default function DaftarUjianSiswaPage() {
   const router = useRouter()
-
+  const [siswaId, setSiswaId] = useState('')
+  const [kelasId, setKelasId] = useState('')
   const [ujianList, setUjianList] = useState<Ujian[]>([])
-  const [sesiMap, setSesiMap] = useState<Record<string, Sesi>>({})
-  const [jumlahSoalMap, setJumlahSoalMap] = useState<Record<string, number>>({})
+  const [sesiSaya, setSesiSaya] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
-  const [errorMsg, setErrorMsg] = useState('')
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setErrorMsg('')
-    try {
-      const res = await fetch('/api/auth/me')
-      const me = await res.json()
-      const kelasId: string | null = me?.siswa?.kelasId ?? null
-      const userId: string | null = me?.siswa?.id ?? null
-
-      if (!kelasId || !userId) {
-        setErrorMsg('Kelas kamu belum terdaftar. Hubungi wali kelas atau admin.')
-        setLoading(false)
-        return
-      }
-
-      const { data: ujianRows, error: ujianErr } = await supabase
-        .from('ujian')
-        .select('id, judul, jenis_ujian, durasi_menit, status, created_at, mapel:mapel_id(nama_mapel)')
-        .eq('kelas_id', kelasId)
-        .eq('status', 'aktif')
-        .order('created_at', { ascending: false })
-
-      if (ujianErr) {
-        setErrorMsg('Belum bisa memuat daftar ujian. Coba lagi nanti.')
-        setLoading(false)
-        return
-      }
-
-      const list = (ujianRows ?? []) as unknown as Ujian[]
-      setUjianList(list)
-
-      if (list.length > 0) {
-        const ujianIds = list.map((u) => u.id)
-
-        const [{ data: sesiRows }, { data: soalRows }] = await Promise.all([
-          supabase
-            .from('sesi_siswa')
-            .select('id, ujian_id, status, nilai_akhir')
-            .eq('siswa_id', userId)
-            .in('ujian_id', ujianIds),
-          supabase.from('ujian_soal').select('ujian_id').in('ujian_id', ujianIds),
-        ])
-
-        setSesiMap(Object.fromEntries((sesiRows ?? []).map((s: Sesi) => [s.ujian_id, s])))
-
-        const counts: Record<string, number> = {}
-        for (const r of (soalRows ?? []) as { ujian_id: string }[]) {
-          counts[r.ujian_id] = (counts[r.ujian_id] ?? 0) + 1
-        }
-        setJumlahSoalMap(counts)
-      }
-    } catch {
-      setErrorMsg('Belum bisa memuat daftar ujian. Coba lagi nanti.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const [modalUjian, setModalUjian] = useState<Ujian | null>(null)
+  const [tokenInput, setTokenInput] = useState('')
+  const [errorToken, setErrorToken] = useState('')
+  const [memulai, setMemulai] = useState(false)
 
   useEffect(() => {
-    load()
-  }, [load])
+    async function init() {
+      const res = await fetch('/api/auth/me')
+      const data = await res.json()
+      if (!data.loggedIn || data.role !== 'siswa' || !data.siswa?.kelasId) { setLoading(false); return }
+      setSiswaId(data.userId)
+      setKelasId(data.siswa.kelasId)
+    }
+    init()
+  }, [])
+
+  const fetchUjian = useCallback(async () => {
+    if (!kelasId || !siswaId) { setLoading(false); return }
+    setLoading(true)
+
+    const { data: ujian } = await supabase
+      .from('ujian')
+      .select('id, judul, jenis_ujian, durasi_menit, mapel:mapel_id(nama_mapel)')
+      .eq('kelas_id', kelasId).eq('status', 'aktif')
+      .order('created_at', { ascending: false })
+
+    const { data: sesi } = await supabase
+      .from('sesi_siswa')
+      .select('ujian_id, status')
+      .eq('siswa_id', siswaId)
+
+    const map: Record<string, string> = {}
+    ;(sesi as SesiRingkas[] || []).forEach(s => { map[s.ujian_id] = s.status })
+
+    setUjianList((ujian as any[]) || [])
+    setSesiSaya(map)
+    setLoading(false)
+  }, [kelasId, siswaId])
+
+  useEffect(() => { fetchUjian() }, [fetchUjian])
+
+  const handleMulai = async () => {
+    if (!modalUjian) return
+    setErrorToken('')
+
+    const { data: ujianAsli } = await supabase.from('ujian').select('token, durasi_menit').eq('id', modalUjian.id).single()
+    if (!ujianAsli || ujianAsli.token.toUpperCase() !== tokenInput.trim().toUpperCase()) {
+      setErrorToken('Token salah. Tanyakan token yang benar ke guru mata pelajaran.')
+      return
+    }
+
+    setMemulai(true)
+    const statusSekarang = sesiSaya[modalUjian.id]
+    if (!statusSekarang) {
+      const { error } = await supabase.from('sesi_siswa').insert({
+        ujian_id: modalUjian.id, siswa_id: siswaId,
+        waktu_mulai: new Date().toISOString(), status: 'sedang_ujian',
+        sisa_detik: ujianAsli.durasi_menit * 60,
+      })
+      if (error) { setErrorToken('Gagal memulai ujian: ' + error.message); setMemulai(false); return }
+    }
+    router.push(`/dashboard/siswa/ujian/${modalUjian.id}`)
+  }
 
   return (
-    <div className="space-y-5 max-w-4xl">
-      <div>
-        <h1 className="text-xl font-bold text-gray-800">Ujian</h1>
-        <p className="text-sm text-gray-400 mt-0.5">Daftar ujian aktif untuk kelasmu</p>
+    <div className="p-3 sm:p-4 lg:p-6">
+      <div className="mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Ujian</h1>
+        <p className="text-gray-500 text-sm mt-1">Daftar ujian yang sedang aktif untuk kelasmu</p>
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-400">Memuat ujian...</p>
-      ) : errorMsg ? (
-        <div className="bg-amber-50 border border-amber-200 text-amber-700 text-sm rounded-lg p-3">{errorMsg}</div>
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">Memuat...</div>
       ) : ujianList.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-10 text-center">
-          <svg className="w-12 h-12 text-gray-200 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
+          <svg className="w-12 h-12 mx-auto mb-3 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <p className="text-sm text-gray-400">Belum ada ujian aktif untuk kelasmu saat ini.</p>
+          <p className="font-medium text-sm">Belum ada ujian aktif saat ini</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {ujianList.map((u) => (
-            <UjianCard
-              key={u.id}
-              ujian={u}
-              sesi={sesiMap[u.id]}
-              jumlahSoal={jumlahSoalMap[u.id] ?? 0}
-              onMulai={() => router.push(`/ujian/${u.id}`)}
-            />
-          ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {ujianList.map(u => {
+            const status = sesiSaya[u.id]
+            return (
+              <div key={u.id} className="bg-white rounded-xl border border-gray-200 p-4">
+                <p className="font-semibold text-gray-800 text-sm mb-1">{u.judul}</p>
+                <p className="text-xs text-gray-500 mb-3">{u.mapel?.nama_mapel} · {JENIS_LABEL[u.jenis_ujian]} · ⏱ {u.durasi_menit} menit</p>
+                {status === 'selesai' ? (
+                  <span className="inline-block px-3 py-1.5 bg-gray-100 text-gray-500 rounded-lg text-xs font-medium">✓ Sudah selesai dikerjakan</span>
+                ) : status === 'diskualifikasi' ? (
+                  <span className="inline-block px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-medium">Didiskualifikasi</span>
+                ) : status === 'sedang_ujian' ? (
+                  <button onClick={() => router.push(`/dashboard/siswa/ujian/${u.id}`)}
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-medium transition">
+                    Lanjutkan Mengerjakan →
+                  </button>
+                ) : (
+                  <button onClick={() => { setModalUjian(u); setTokenInput(''); setErrorToken('') }}
+                    className="px-4 py-2 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-lg text-sm font-medium transition">
+                    Mulai Ujian
+                  </button>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
-    </div>
-  )
-}
 
-function UjianCard({
-  ujian,
-  sesi,
-  jumlahSoal,
-  onMulai,
-}: {
-  ujian: Ujian
-  sesi?: Sesi
-  jumlahSoal: number
-  onMulai: () => void
-}) {
-  const status = sesi?.status ?? 'belum_mulai'
-  const badge = STATUS_BADGE[status]
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:shadow-md transition-all">
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${badge.cls}`}>{badge.label}</span>
-        <span className="text-[11px] text-gray-400 whitespace-nowrap">
-          {JENIS_LABEL[ujian.jenis_ujian] ?? ujian.jenis_ujian}
-        </span>
-      </div>
-
-      <h4 className="text-sm font-semibold text-gray-800">{ujian.judul}</h4>
-      <p className="text-xs text-gray-500 mt-1">
-        {ujian.mapel?.nama_mapel ?? 'Mapel'} · {jumlahSoal} soal · ⏱ {ujian.durasi_menit} menit
-      </p>
-
-      {status === 'selesai' ? (
-        <p className="mt-3 text-sm font-bold text-[#1a3a6b]">
-          {sesi?.nilai_akhir !== null && sesi?.nilai_akhir !== undefined
-            ? `Nilai: ${sesi.nilai_akhir}`
-            : 'Menunggu penilaian guru'}
-        </p>
-      ) : status === 'diskualifikasi' ? (
-        <p className="mt-3 text-xs text-red-500">Ujian dihentikan karena pelanggaran tata tertib.</p>
-      ) : (
-        <button
-          onClick={onMulai}
-          className="mt-3 w-full py-2 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-lg text-sm font-medium transition"
-        >
-          {status === 'sedang_ujian' ? 'Lanjutkan Ujian' : 'Mulai Ujian'}
-        </button>
+      {modalUjian && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setModalUjian(null)}>
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+            <h2 className="font-semibold text-gray-800 mb-1">{modalUjian.judul}</h2>
+            <p className="text-xs text-gray-500 mb-4">Masukkan token yang diberikan guru untuk mulai mengerjakan.</p>
+            <input type="text" value={tokenInput} onChange={e => setTokenInput(e.target.value.toUpperCase())}
+              placeholder="TOKEN"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center font-mono text-lg tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2" />
+            {errorToken && <p className="text-xs text-red-500 mb-3">{errorToken}</p>}
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setModalUjian(null)} className="flex-1 px-4 py-2 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition">Batal</button>
+              <button onClick={handleMulai} disabled={memulai || !tokenInput}
+                className="flex-1 px-4 py-2 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-lg text-sm font-semibold transition disabled:opacity-50">
+                {memulai ? 'Memulai...' : 'Mulai'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
