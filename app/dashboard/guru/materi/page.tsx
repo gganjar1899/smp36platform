@@ -1,100 +1,158 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
+
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 type Materi = {
   id: string
   judul: string
-  mapel: string
-  kelas: string
-  pertemuan: number
-  deskripsi: string
-  file_nama: string | null
+  deskripsi: string | null
+  file_url: string | null
   created_at: string
+  mapel_id: string
+  kelas_id: string
+  mapel_nama?: string
+  kelas_nama?: string
 }
 
-export default function MateriPage() {
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+type Opsi = { id: string; nama: string }
 
+export default function MateriPage() {
+  const [guruId, setGuruId] = useState('')
   const [showForm, setShowForm]     = useState(false)
   const [materiList, setMateriList] = useState<Materi[]>([])
-  const [kelasList, setKelasList]   = useState<any[]>([])
-  const [mapelList, setMapelList]   = useState<any[]>([])
+  const [kelasList, setKelasList]   = useState<Opsi[]>([])
+  const [mapelList, setMapelList]   = useState<Opsi[]>([])
+  const [loading, setLoading]       = useState(true)
   const [saving, setSaving]         = useState(false)
   const [msg, setMsg]               = useState('')
   const [form, setForm] = useState({
-    judul: '', mapel: '', kelas: '',
+    judul: '', mapelId: '', kelasId: '',
     pertemuan: 1, deskripsi: '',
     file: null as File | null,
   })
 
+  // Ambil identitas guru + kelas/mapel yang diajar
   useEffect(() => {
-    async function fetchData() {
-      let userId: string | undefined
+    async function initIdentitas() {
       try {
         const res = await fetch('/api/auth/me')
         const meData = await res.json()
-        if (meData.loggedIn) userId = meData.userId
+        if (!meData.loggedIn) return
+        setGuruId(meData.userId)
+
+        const { data } = await supabase
+          .from('guru_mapel')
+          .select('mapel:mapel_id(id,nama:nama_mapel), kelas:kelas_id(id,nama_rombel)')
+          .eq('guru_id', meData.userId)
+          .eq('tahun_ajaran', '2026/2027')
+
+        if (data) {
+          const mapels = [...new Map(data.map((d: any) => [d.mapel?.id, { id: d.mapel?.id, nama: d.mapel?.nama }])).values()].filter(m => m.id)
+          const kelas  = [...new Map(data.map((d: any) => [d.kelas?.id, { id: d.kelas?.id, nama: d.kelas?.nama_rombel }])).values()].filter(k => k.id)
+          setMapelList(mapels as Opsi[])
+          setKelasList(kelas as Opsi[])
+          setForm(f => ({ ...f, mapelId: mapels[0]?.id ?? '', kelasId: kelas[0]?.id ?? '' }))
+        }
       } catch (err) {
         console.error('[guru/materi] gagal ambil identitas:', err)
       }
-      if (!userId) return
-
-      const { data } = await supabase
-        .from('guru_mapel')
-        .select('mapel:mapel_id(id,nama:nama_mapel), kelas:kelas_id(id,nama_rombel)')
-        .eq('guru_id', userId!)
-        .eq('tahun_ajaran', '2026/2027')
-
-      if (data) {
-        const mapels = [...new Map(data.map((d: any) => [d.mapel?.id, d.mapel])).values()].filter(Boolean)
-        const kelas  = [...new Map(data.map((d: any) => [d.kelas?.id, d.kelas])).values()].filter(Boolean)
-        setMapelList(mapels)
-        setKelasList(kelas)
-        if (mapels.length > 0) setForm(f => ({ ...f, mapel: mapels[0].nama }))
-        if (kelas.length > 0)  setForm(f => ({ ...f, kelas: kelas[0].nama_rombel }))
-      }
     }
-    fetchData()
+    initIdentitas()
   }, [])
+
+  // Ambil daftar materi yang sudah pernah disimpan guru ini
+  const fetchMateri = useCallback(async () => {
+    if (!guruId) return
+    setLoading(true)
+    const { data } = await supabase
+      .from('materi_belajar')
+      .select('id, judul, deskripsi, file_url, created_at, mapel_id, kelas_id, mapel:mapel_id(nama:nama_mapel), kelas:kelas_id(nama_rombel)')
+      .eq('guru_id', guruId)
+      .eq('tahun_ajaran', '2026/2027')
+      .order('created_at', { ascending: false })
+
+    if (data) {
+      setMateriList(data.map((d: any) => ({
+        ...d, mapel_nama: d.mapel?.nama, kelas_nama: d.kelas?.nama_rombel,
+      })))
+    }
+    setLoading(false)
+  }, [guruId])
+
+  useEffect(() => { fetchMateri() }, [fetchMateri])
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
   }
 
   async function handleSimpan() {
-    if (!form.judul || !form.mapel || !form.kelas) {
+    if (!form.judul || !form.mapelId || !form.kelasId) {
       setMsg('Judul, mapel, dan kelas wajib diisi')
       return
     }
     setSaving(true)
     setMsg('')
-    await new Promise(r => setTimeout(r, 400))
 
-    setMateriList(prev => [{
-      id: Date.now().toString(),
-      judul: form.judul,
-      mapel: form.mapel,
-      kelas: form.kelas,
-      pertemuan: Number(form.pertemuan),
-      deskripsi: form.deskripsi,
-      file_nama: form.file?.name ?? null,
-      created_at: new Date().toISOString(),
-    }, ...prev])
+    try {
+      let fileUrl: string | null = null
 
-    setForm(f => ({ ...f, judul: '', deskripsi: '', pertemuan: f.pertemuan + 1, file: null }))
-    setShowForm(false)
-    setSaving(false)
-    setMsg('Materi berhasil ditambahkan!')
-    setTimeout(() => setMsg(''), 3000)
+      // Upload file ke Supabase Storage kalau ada
+      if (form.file) {
+        const path = `materi/${guruId}/${Date.now()}-${form.file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`
+        const { error: uploadError } = await supabase.storage
+          .from('dokumen-ajar')
+          .upload(path, form.file, { upsert: false })
+
+        if (uploadError) throw new Error('Gagal upload file: ' + uploadError.message)
+
+        const { data: urlData } = supabase.storage.from('dokumen-ajar').getPublicUrl(path)
+        fileUrl = urlData.publicUrl
+      }
+
+      // Nomor pertemuan digabung ke judul karena tabel materi_belajar tidak punya kolom pertemuan tersendiri
+      const judulFinal = `Pertemuan ${form.pertemuan} — ${form.judul}`
+
+      const { error: insertError } = await supabase.from('materi_belajar').insert({
+        guru_id: guruId,
+        mapel_id: form.mapelId,
+        kelas_id: form.kelasId,
+        jenis: 'materi',
+        judul: judulFinal,
+        deskripsi: form.deskripsi || null,
+        file_url: fileUrl,
+        tahun_ajaran: '2026/2027',
+        semester: 1,
+        is_published: true,
+      })
+
+      if (insertError) throw new Error(insertError.message)
+
+      setForm(f => ({ ...f, judul: '', deskripsi: '', pertemuan: f.pertemuan + 1, file: null }))
+      setShowForm(false)
+      setMsg('Materi berhasil ditambahkan!')
+      fetchMateri()
+    } catch (err: any) {
+      setMsg('Gagal menyimpan: ' + err.message)
+    } finally {
+      setSaving(false)
+      setTimeout(() => setMsg(''), 4000)
+    }
+  }
+
+  async function handleHapus(id: string) {
+    if (!confirm('Hapus materi ini?')) return
+    await supabase.from('materi_belajar').delete().eq('id', id)
+    fetchMateri()
   }
 
   const grouped = materiList.reduce((acc, m) => {
-    const key = `${m.mapel} — Kelas ${m.kelas}`
+    const key = `${m.mapel_nama ?? '-'} — Kelas ${m.kelas_nama ?? '-'}`
     if (!acc[key]) acc[key] = []
     acc[key].push(m)
     return acc
@@ -139,16 +197,16 @@ export default function MateriPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1 block">Mata Pelajaran</label>
-              <select name="mapel" value={form.mapel} onChange={handleChange}
+              <select name="mapelId" value={form.mapelId} onChange={handleChange}
                 className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500">
-                {mapelList.map((m: any) => <option key={m.id}>{m.nama}</option>)}
+                {mapelList.map(m => <option key={m.id} value={m.id}>{m.nama}</option>)}
               </select>
             </div>
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1 block">Kelas</label>
-              <select name="kelas" value={form.kelas} onChange={handleChange}
+              <select name="kelasId" value={form.kelasId} onChange={handleChange}
                 className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500">
-                {kelasList.map((k: any) => <option key={k.id}>{k.nama_rombel}</option>)}
+                {kelasList.map(k => <option key={k.id} value={k.id}>{k.nama}</option>)}
               </select>
             </div>
           </div>
@@ -209,7 +267,12 @@ export default function MateriPage() {
       )}
 
       {/* List materi */}
-      {materiList.length === 0 ? (
+      {loading ? (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-10 text-center text-gray-400">
+          <div className="w-8 h-8 border-2 border-[#1a6b3a] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          Memuat materi...
+        </div>
+      ) : materiList.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-10 text-center">
           <svg className="w-12 h-12 text-gray-200 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
@@ -220,31 +283,32 @@ export default function MateriPage() {
         Object.entries(grouped).map(([group, items]) => (
           <div key={group} className="space-y-2">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-widest px-1">{group}</h3>
-            {items.sort((a, b) => a.pertemuan - b.pertemuan).map(m => (
+            {items.map(m => (
               <div key={m.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:shadow-md transition-all">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-[11px] font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-                        Pertemuan {m.pertemuan}
-                      </span>
-                    </div>
                     <h3 className="text-sm font-semibold text-gray-800">{m.judul}</h3>
                     {m.deskripsi && (
                       <p className="text-xs text-gray-500 mt-1 leading-relaxed">{m.deskripsi}</p>
                     )}
-                    {m.file_nama && (
-                      <div className="mt-2 flex items-center gap-2">
+                    {m.file_url && (
+                      <a href={m.file_url} target="_blank" rel="noopener noreferrer"
+                        className="mt-2 flex items-center gap-2 w-fit hover:underline">
                         <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                         </svg>
-                        <span className="text-xs text-gray-500">{m.file_nama}</span>
-                      </div>
+                        <span className="text-xs text-blue-500">Lihat / Unduh file</span>
+                      </a>
                     )}
                   </div>
-                  <span className="text-[11px] text-gray-400 whitespace-nowrap">
-                    {new Date(m.created_at).toLocaleDateString('id-ID')}
-                  </span>
+                  <div className="flex flex-col items-end gap-2">
+                    <span className="text-[11px] text-gray-400 whitespace-nowrap">
+                      {new Date(m.created_at).toLocaleDateString('id-ID')}
+                    </span>
+                    <button onClick={() => handleHapus(m.id)} className="text-[11px] text-red-400 hover:text-red-600">
+                      Hapus
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
