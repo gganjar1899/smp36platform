@@ -24,23 +24,25 @@ export async function GET() {
   }
 
   if (user.role === "siswa") {
+    // Ambil kelas siswa lewat siswa_kelas (tabel `siswa` lama tidak pernah di-update untuk siswa baru)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: sk } = await (supabase as any)
+    const { data: siswaKelas } = await (supabase as any)
       .from("siswa_kelas")
-      .select("kelas_id, kelas:kelas_id(id, nama_rombel)")
+      .select("kelas:kelas_id(id, nama_rombel)")
       .eq("siswa_id", user.id)
       .eq("tahun_ajaran", "2026/2027")
       .eq("status", "aktif")
-      .single();
+      .maybeSingle();
 
-    const kelasId = sk?.kelas?.id ?? null;
-    const kelasNama = sk?.kelas?.nama_rombel ?? null;
+    const kelasId: string | null = siswaKelas?.kelas?.id ?? null;
+    const kelasNama: string | null = siswaKelas?.kelas?.nama_rombel ?? null;
 
     return NextResponse.json({
       loggedIn: true,
       userId: user.id,
       role: "siswa",
       nama: user.nama,
+      nisn: user.nisn,
       siswa: kelasId
         ? { id: user.id, kelasId, kelasNama }
         : null,

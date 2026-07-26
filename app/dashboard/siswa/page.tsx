@@ -61,11 +61,10 @@ export default function SiswaDashboard() {
   const sapaanNama = userName.split(',')[0]
 
   const quickMenu = [
+    { href: '/cbt',                          label: 'Kerjakan Ujian', desc: 'Ujian & tes CBT aktif',        color: 'bg-red-500',    icon: '🎯' },
     { href: '/dashboard/siswa/materi',       label: 'Materi',       desc: 'Bahan belajar per mapel',     color: 'bg-blue-500',   icon: '📚' },
     { href: '/dashboard/siswa/dokumen-ajar', label: 'Dokumen Ajar', desc: 'Modul, video & latihan',      color: 'bg-purple-500', icon: '📁' },
-    { href: '/dashboard/siswa/tugas',        label: 'Tugas',        desc: 'Kumpulkan tugas & lihat status', color: 'bg-amber-500', icon: '📝' },
     { href: '/dashboard/siswa/pengumuman',   label: 'Pengumuman',   desc: 'Info terbaru dari sekolah',   color: 'bg-teal-500',   icon: '📢' },
-    { href: '/dashboard/siswa/hasil-ujian',  label: 'Hasil Ujian',  desc: 'Nilai & riwayat ujian CBT',   color: 'bg-red-500',    icon: '🎯' },
   ]
 
   return (
