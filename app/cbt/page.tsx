@@ -38,11 +38,11 @@ type Pertanyaan = {
 type WarningLevel = 0 | 1 | 2 | 3
 
 export default function CBTSiswaPage() {
-  const [step, setStep] = useState<'login' | 'token' | 'intro' | 'ujian' | 'selesai'>('login')
+  const [step, setStep] = useState<'memuat' | 'gagal' | 'token' | 'intro' | 'ujian' | 'selesai'>('memuat')
   const [nis, setNis] = useState('')
   const [namaSiswa, setNamaSiswa] = useState('')
   const [kelas, setKelas] = useState('')
-  const [loginError, setLoginError] = useState('')
+  const [gagalPesan, setGagalPesan] = useState('')
   const [tokenInput, setTokenInput] = useState('')
   const [tokenError, setTokenError] = useState('')
   const [selectedSoal, setSelectedSoal] = useState<Soal | null>(null)
@@ -210,16 +210,36 @@ export default function CBTSiswaPage() {
     }
   }, [step, triggerWarning, catatPelanggaran])
 
-  // Login siswa
-  const handleLogin = async () => {
-    setLoginError('')
-    if (!nis) { setLoginError('NIS wajib diisi'); return }
-    const { data } = await supabase.from('siswa').select('*').eq('nis', nis).single()
-    if (!data) { setLoginError('NIS tidak ditemukan. Hubungi guru jika ada masalah.'); return }
-    setNamaSiswa(data.nama)
-    setKelas(data.kelas)
-    setStep('token')
-  }
+  // Ambil identitas otomatis dari sesi yang sudah login -- siswa tidak perlu ketik NISN lagi
+  useEffect(() => {
+    async function initIdentitas() {
+      try {
+        const res = await fetch('/api/auth/me')
+        const me = await res.json()
+
+        if (!me.loggedIn || me.role !== 'siswa') {
+          setGagalPesan('Kamu belum login. Silakan login lewat halaman utama dulu.')
+          setStep('gagal')
+          return
+        }
+        if (!me.siswa || !me.siswa.kelasNama) {
+          setGagalPesan('Data kelasmu belum lengkap. Hubungi wali kelas atau admin.')
+          setStep('gagal')
+          return
+        }
+
+        setNis(me.nisn || '')
+        setNamaSiswa(me.nama)
+        setKelas(me.siswa.kelasNama)
+        setStep('token')
+      } catch (err) {
+        console.error('[cbt] gagal ambil identitas:', err)
+        setGagalPesan('Gagal memuat data. Coba muat ulang halaman.')
+        setStep('gagal')
+      }
+    }
+    initIdentitas()
+  }, [])
 
   // Verifikasi token yang diberikan guru -- langsung menuju ujian yang sesuai, tanpa perlu memilih dari daftar
   const handleVerifikasiToken = async () => {
@@ -355,33 +375,31 @@ export default function CBTSiswaPage() {
   const kualColor = nilaiAkhir >= 90 ? 'text-green-600' : nilaiAkhir >= 80 ? 'text-blue-600' : nilaiAkhir >= 70 ? 'text-yellow-600' : 'text-red-600'
 
   // ====== LOGIN ======
-  if (step === 'login') return (
+  if (step === 'memuat') return (
     <div className="min-h-screen bg-gradient-to-br from-[#1a3a6b] to-[#2d5a9e] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm">
-        <div className="text-center mb-6">
-          <div className="w-16 h-16 bg-[#1a3a6b] rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
-            <span className="text-white font-bold text-2xl">36</span>
-          </div>
-          <h1 className="text-xl font-bold text-gray-800">SMPN 36 Bandung</h1>
-          <p className="text-gray-500 text-sm mt-1">Computer Based Test</p>
+      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
+        <div className="w-16 h-16 bg-[#1a3a6b] rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+          <span className="text-white font-bold text-2xl">36</span>
         </div>
-        <div className="mb-4">
-          <label className="text-xs font-semibold text-gray-500 mb-1 block">NIS / No. Induk Siswa</label>
-          <input type="text" value={nis} onChange={e => setNis(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleLogin()}
-            placeholder="Masukkan NIS kamu"
-            className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <div className="w-8 h-8 border-2 border-[#1a3a6b] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <p className="text-sm text-gray-500">Memuat identitasmu...</p>
+      </div>
+    </div>
+  )
+
+  if (step === 'gagal') return (
+    <div className="min-h-screen bg-gradient-to-br from-[#1a3a6b] to-[#2d5a9e] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
+        <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
         </div>
-        {loginError && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
-            <p className="text-red-600 text-xs">{loginError}</p>
-          </div>
-        )}
-        <button onClick={handleLogin}
-          className="w-full py-3 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-xl font-semibold transition shadow-md">
-          Masuk →
-        </button>
-        <p className="text-center text-xs text-gray-400 mt-4">Hubungi guru jika NIS tidak ditemukan</p>
+        <p className="text-sm text-gray-600 mb-5">{gagalPesan}</p>
+        <a href="/dashboard/siswa"
+          className="block w-full py-3 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-xl font-semibold transition shadow-md">
+          Kembali ke Dashboard
+        </a>
       </div>
     </div>
   )
