@@ -101,6 +101,7 @@ export default function KerjakanUjianPage() {
   const [submitting, setSubmitting] = useState(false)
   const [uploadingId, setUploadingId] = useState<string | null>(null)
   const [strikeToast, setStrikeToast] = useState('')
+  const [isFullscreen, setIsFullscreen] = useState(true)
 
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -248,14 +249,13 @@ export default function KerjakanUjianPage() {
       return
     }
 
-    // Minta fullscreen SEBELUM proses async lain — beberapa browser (terutama Safari iOS)
-    // menolak permintaan fullscreen kalau tidak dipanggil langsung dari sentuhan/klik pengguna.
+    // Minta fullscreen di awal banget, selagi masih dalam konteks klik user
+    // (sebagian browser menolak permintaan fullscreen kalau dipanggil setelah await)
     try {
-      const el = document.documentElement as any
-      if (el.requestFullscreen) el.requestFullscreen().catch(() => {})
-      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen()
+      await document.documentElement.requestFullscreen()
+      setIsFullscreen(true)
     } catch {
-      // tidak fatal, lanjutkan tanpa fullscreen kalau browser/perangkat tidak mendukung
+      // Sebagian browser/perangkat gak dukung Fullscreen API — lanjut tanpa itu, gak menggagalkan ujian
     }
 
     setStarting(true)
@@ -337,6 +337,9 @@ export default function KerjakanUjianPage() {
 
         setSesi((prev) => (prev ? { ...prev, status: statusAkhir, nilai_akhir: nilaiAkhir } : prev))
         setStep(statusAkhir)
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {})
+        }
       } finally {
         setSubmitting(false)
       }
@@ -349,15 +352,6 @@ export default function KerjakanUjianPage() {
       handleSubmit(!!diskualifikasi)
     }
   }, [handleSubmit])
-
-  // Keluar dari fullscreen otomatis begitu ujian selesai/diskualifikasi
-  useEffect(() => {
-    if (step === 'selesai' || step === 'diskualifikasi') {
-      const el = document as any
-      if (el.fullscreenElement && el.exitFullscreen) el.exitFullscreen().catch(() => {})
-      else if (el.webkitFullscreenElement && el.webkitExitFullscreen) el.webkitExitFullscreen()
-    }
-  }, [step])
 
   // ====== TIMER ======
   useEffect(() => {
@@ -393,12 +387,10 @@ export default function KerjakanUjianPage() {
     return () => window.removeEventListener('beforeunload', handler)
   }, [step])
 
-  // ====== ANTI-CHEAT: DETEKSI PINDAH TAB / APLIKASI LAIN ======
-  useEffect(() => {
-    if (step !== 'ujian' || !sesi || !ujian) return
-
-    const handleVisibility = async () => {
-      if (!document.hidden) return
+  // ====== ANTI-CHEAT: fungsi penambah strike bersama, dipakai semua jenis pelanggaran ======
+  const naikkanStrike = useCallback(
+    async (jenisPelanggaran: string, pesanPeringatan: string) => {
+      if (!sesi || !ujian) return
       const strikeBaru = (sesi.jumlah_strike ?? 0) + 1
       setSesi((prev) => (prev ? { ...prev, jumlah_strike: strikeBaru } : prev))
 
@@ -408,7 +400,7 @@ export default function KerjakanUjianPage() {
       await supabase.from('sesi_siswa').update({ jumlah_strike: strikeBaru }).eq('id', sesi.id)
       await supabase.from('log_pelanggaran').insert({
         sesi_id: sesi.id,
-        jenis_pelanggaran: 'pindah_tab',
+        jenis_pelanggaran: jenisPelanggaran,
         status: akanDiskualifikasi ? 'diskualifikasi' : 'peringatan',
         strike_ke: strikeBaru,
         sisa_waktu: formatWaktu(sisaDetik),
@@ -421,79 +413,72 @@ export default function KerjakanUjianPage() {
       }
 
       if (akanDiskualifikasi) {
-        setStrikeToast(`🔴 Ujian dihentikan otomatis: terdeteksi ${strikeBaru}x berpindah tab.`)
+        setStrikeToast(`🔴 Ujian dihentikan otomatis: terdeteksi ${strikeBaru}x pelanggaran.`)
         submitRef.current(true)
       } else {
-        setStrikeToast(`⚠️ Peringatan ${strikeBaru}/${maks}: jangan berpindah tab selama ujian!`)
+        setStrikeToast(`⚠️ Peringatan ${strikeBaru}/${maks}: ${pesanPeringatan}`)
         if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current)
         toastTimeoutRef.current = setTimeout(() => setStrikeToast(''), 5000)
       }
-    }
+    },
+    [sesi, ujian, sisaDetik]
+  )
 
+  // ====== ANTI-CHEAT: DETEKSI PINDAH TAB / APLIKASI LAIN ======
+  useEffect(() => {
+    if (step !== 'ujian' || !sesi || !ujian) return
+    const handleVisibility = () => {
+      if (!document.hidden) return
+      naikkanStrike('pindah_tab', 'jangan berpindah tab selama ujian!')
+    }
     document.addEventListener('visibilitychange', handleVisibility)
     window.addEventListener('pagehide', handleVisibility)
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility)
       window.removeEventListener('pagehide', handleVisibility)
     }
-  }, [step, sesi, ujian, sisaDetik])
+  }, [step, sesi, ujian, naikkanStrike])
 
-  // ====== ANTI-CHEAT: DETEKSI KELUAR DARI MODE LAYAR PENUH ======
-  const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false)
+  // ====== ANTI-CHEAT: KELUAR DARI MODE LAYAR PENUH ======
   useEffect(() => {
     if (step !== 'ujian' || !sesi || !ujian) return
-
-    const handleFullscreenChange = async () => {
-      const masihFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement)
-      if (masihFullscreen) { setShowFullscreenPrompt(false); return }
-
-      setShowFullscreenPrompt(true)
-
-      const strikeBaru = (sesi.jumlah_strike ?? 0) + 1
-      setSesi((prev) => (prev ? { ...prev, jumlah_strike: strikeBaru } : prev))
-
-      const maks = ujian.maks_peringatan ?? 3
-      const akanDiskualifikasi = strikeBaru >= maks
-
-      await supabase.from('sesi_siswa').update({ jumlah_strike: strikeBaru }).eq('id', sesi.id)
-      await supabase.from('log_pelanggaran').insert({
-        sesi_id: sesi.id,
-        jenis_pelanggaran: 'keluar_fullscreen',
-        status: akanDiskualifikasi ? 'diskualifikasi' : 'peringatan',
-        strike_ke: strikeBaru,
-        sisa_waktu: formatWaktu(sisaDetik),
-        platform: navigator.platform,
-        user_agent: navigator.userAgent,
-      })
-
-      if (akanDiskualifikasi) {
-        setStrikeToast(`🔴 Ujian dihentikan otomatis: terdeteksi ${strikeBaru}x keluar dari layar penuh.`)
-        submitRef.current(true)
-      } else {
-        setStrikeToast(`⚠️ Peringatan ${strikeBaru}/${maks}: tetap di mode layar penuh selama ujian!`)
-        if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current)
-        toastTimeoutRef.current = setTimeout(() => setStrikeToast(''), 5000)
-      }
+    const handleFullscreenChange = () => {
+      const fs = !!document.fullscreenElement
+      setIsFullscreen(fs)
+      if (!fs) naikkanStrike('keluar_fullscreen', 'tetap di mode layar penuh selama ujian!')
     }
-
     document.addEventListener('fullscreenchange', handleFullscreenChange)
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange)
-      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
-    }
-  }, [step, sesi, ujian, sisaDetik])
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  }, [step, sesi, ujian, naikkanStrike])
 
-  const kembaliFullscreen = async () => {
-    try {
-      const el = document.documentElement as any
-      if (el.requestFullscreen) await el.requestFullscreen()
-      else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen()
-      setShowFullscreenPrompt(false)
-    } catch {
-      // biarkan prompt tetap tampil kalau browser menolak
+  // ====== ANTI-CHEAT: BLOKIR KLIK KANAN, COPY/PASTE, DAN SHORTCUT DEVTOOLS ======
+  useEffect(() => {
+    if (step !== 'ujian') return
+
+    const blokirKlikKanan = (e: MouseEvent) => e.preventDefault()
+    const blokirClipboard = (e: ClipboardEvent) => e.preventDefault()
+    const blokirShortcut = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase()
+      const kombinasiTerlarang =
+        ((e.ctrlKey || e.metaKey) && ['c', 'v', 'x', 'p', 's', 'u'].includes(k)) ||
+        k === 'f12' ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && ['i', 'j', 'c'].includes(k))
+      if (kombinasiTerlarang) e.preventDefault()
     }
-  }
+
+    document.addEventListener('contextmenu', blokirKlikKanan)
+    document.addEventListener('copy', blokirClipboard)
+    document.addEventListener('cut', blokirClipboard)
+    document.addEventListener('paste', blokirClipboard)
+    document.addEventListener('keydown', blokirShortcut)
+    return () => {
+      document.removeEventListener('contextmenu', blokirKlikKanan)
+      document.removeEventListener('copy', blokirClipboard)
+      document.removeEventListener('cut', blokirClipboard)
+      document.removeEventListener('paste', blokirClipboard)
+      document.removeEventListener('keydown', blokirShortcut)
+    }
+  }, [step])
 
   // ====== AUTOSAVE JAWABAN ======
   const simpanJawaban = useCallback(
@@ -608,9 +593,9 @@ export default function KerjakanUjianPage() {
             </div>
           </div>
 
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 text-xs text-amber-700 leading-relaxed">
-            Jangan berpindah tab atau aplikasi lain selama ujian berlangsung. Ujian akan otomatis disubmit
-            jika terdeteksi berpindah tab sebanyak {ujian?.maks_peringatan ?? 3} kali.
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 text-xs text-amber-700 leading-relaxed space-y-1">
+            <p>Ujian berjalan dalam <b>mode layar penuh</b>. Jangan berpindah tab, keluar dari layar penuh, atau membuka aplikasi lain.</p>
+            <p>Klik kanan dan copy-paste dinonaktifkan selama ujian. Ujian otomatis disubmit jika pelanggaran terdeteksi {ujian?.maks_peringatan ?? 3} kali.</p>
           </div>
 
           <label className="text-xs font-semibold text-gray-500 mb-1 block">Masukkan Token dari Guru</label>
@@ -697,21 +682,20 @@ export default function KerjakanUjianPage() {
   const jSoal = soal ? jawaban[soal.id] : undefined
 
   return (
-    <div className="min-h-screen bg-[#f4f5fb]">
+    <div className="min-h-screen bg-[#f4f5fb] select-none">
       {strikeToast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg max-w-[90vw] text-center">
           {strikeToast}
         </div>
       )}
 
-      {showFullscreenPrompt && (
-        <div className="fixed inset-x-0 bottom-0 z-50 bg-amber-500 text-white px-4 py-3 flex items-center justify-between gap-3 shadow-lg">
-          <p className="text-xs sm:text-sm font-medium">Kamu keluar dari mode layar penuh. Tetap di layar penuh selama ujian.</p>
-          <button onClick={kembaliFullscreen}
-            className="px-3 py-1.5 bg-white text-amber-600 rounded-lg text-xs font-semibold flex-shrink-0 hover:bg-amber-50 transition">
-            Layar Penuh Lagi
-          </button>
-        </div>
+      {!isFullscreen && (
+        <button
+          onClick={() => document.documentElement.requestFullscreen().catch(() => {})}
+          className="fixed bottom-4 right-4 z-50 flex items-center gap-1.5 bg-red-600 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-lg animate-pulse"
+        >
+          ⛶ Kembali ke Layar Penuh
+        </button>
       )}
 
       <div className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm px-4 py-3 flex items-center justify-between">
@@ -797,7 +781,7 @@ export default function KerjakanUjianPage() {
                 onChange={(e) => handleEsaiChange(soal.id, e.target.value)}
                 rows={6}
                 placeholder="Tulis jawabanmu di sini..."
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                className="select-text w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
             )}
 
