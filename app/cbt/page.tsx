@@ -681,43 +681,23 @@ export default function CBTSiswaPage() {
   if (step === 'selesai') return (
     <div className="min-h-screen bg-gradient-to-br from-[#1a3a6b] to-[#2d5a9e] flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center">
-        <div className="text-5xl mb-4">{cheating ? '⚠️' : nilaiAkhir >= 70 ? '🎉' : '📚'}</div>
-        <h2 className="text-xl font-bold text-gray-800 mb-1">
-          {cheating ? 'Ujian Disubmit Otomatis' : 'Ujian Selesai!'}
-        </h2>
+        <div className="text-5xl mb-4">✅</div>
+        <h2 className="text-xl font-bold text-gray-800 mb-1">Ujian Selesai!</h2>
         <p className="text-sm text-gray-500 mb-1">{selectedSoal?.judul}</p>
         <p className="text-xs text-gray-400 mb-6">{namaSiswa} · {kelas}</p>
 
-        {cheating && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-xs text-red-700">
-            Ujian disubmit otomatis karena terdeteksi pelanggaran tata tertib.
-          </div>
-        )}
-
-        <div className={`text-6xl font-black mb-2 ${kualColor}`}>{nilaiAkhir}</div>
-        <div className={`text-base font-bold mb-1 ${kualColor}`}>{kual} — {kualLabel}</div>
-        <p className="text-xs text-gray-500 mb-6">✅ {jumlahBenar} benar · ❌ {pertanyaanList.length - jumlahBenar} salah dari {pertanyaanList.length} soal</p>
-
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          {[
-            { label: 'Nilai', val: nilaiAkhir, color: kualColor },
-            { label: 'Benar', val: jumlahBenar, color: 'text-green-600' },
-            { label: 'Salah', val: pertanyaanList.length - jumlahBenar, color: 'text-red-500' },
-          ].map(s => (
-            <div key={s.label} className="bg-gray-50 rounded-xl p-3">
-              <p className={`text-xl font-bold ${s.color}`}>{s.val}</p>
-              <p className="text-xs text-gray-500">{s.label}</p>
-            </div>
-          ))}
+        <div className="bg-green-50 border border-green-100 rounded-xl p-4 mb-4">
+          <p className="text-sm font-semibold text-green-700">Jawabanmu sudah berhasil tersimpan</p>
         </div>
 
-        <div className={`rounded-xl p-4 mb-4 ${nilaiAkhir >= 70 ? 'bg-green-50 border border-green-100' : 'bg-orange-50 border border-orange-100'}`}>
-          <p className={`text-sm font-semibold ${nilaiAkhir >= 70 ? 'text-green-700' : 'text-orange-700'}`}>
-            {nilaiAkhir >= 70 ? '✅ Selamat! Nilai kamu di atas KKM (70)' : '📖 Nilai di bawah KKM. Semangat belajar lagi!'}
-          </p>
-        </div>
+        <p className="text-xs text-gray-400 mb-6">
+          Nilai akan diumumkan oleh guru mata pelajaran. Terima kasih sudah mengerjakan dengan jujur! 🙏
+        </p>
 
-        <p className="text-xs text-gray-400">Nilai sudah tercatat. Terima kasih telah mengerjakan dengan jujur! 🙏</p>
+        <a href="/dashboard/siswa"
+          className="block w-full py-3 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-xl font-semibold transition shadow-md">
+          Kembali ke Dashboard
+        </a>
       </div>
     </div>
   )
