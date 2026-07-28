@@ -530,16 +530,23 @@ export default function CBTSiswaPage() {
         </div>
       )}
 
-      {/* Fullscreen reminder */}
+      {/* Fullscreen wajib -- overlay penuh yang mengunci ujian sampai siswa klik kembali ke fullscreen */}
       {!isFullscreen && (
-        <div className="fixed top-0 left-0 right-0 z-40 bg-orange-500 text-white text-center py-2 px-4 text-xs font-medium">
-          ⚠️ Mode layar penuh tidak aktif.
-          <button onClick={requestFullscreen} className="ml-2 underline font-bold">Klik di sini untuk mengaktifkan</button>
+        <div className="fixed inset-0 z-[60] bg-[#1a3a6b]/97 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl">
+            <div className="text-4xl mb-3">🔒</div>
+            <h3 className="font-bold text-gray-800 mb-1">Mode Layar Penuh Wajib Aktif</h3>
+            <p className="text-xs text-gray-500 mb-4">Ujian dijeda sementara. Klik tombol di bawah untuk melanjutkan mengerjakan.</p>
+            <button onClick={requestFullscreen}
+              className="w-full py-3 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-xl font-semibold text-sm transition shadow-md">
+              Lanjutkan Ujian (Layar Penuh)
+            </button>
+          </div>
         </div>
       )}
 
       {/* Top Bar */}
-      <div className={`bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky z-10 shadow-sm ${!isFullscreen ? 'top-8' : 'top-0'}`}>
+      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
         <div className="flex-1 min-w-0">
           <p className="text-xs text-gray-500 truncate">{namaSiswa} · {kelas}</p>
           <p className="text-sm font-semibold text-gray-800 truncate">{selectedSoal?.judul}</p>
@@ -635,7 +642,9 @@ export default function CBTSiswaPage() {
           ) : (
             <button onClick={() => {
               const belumDijawab = pertanyaanList.length - Object.keys(jawaban).length
+              const jumlahRagu = raguList.size
               if (belumDijawab > 0 && !confirm(`Masih ada ${belumDijawab} soal belum dijawab. Yakin ingin submit?`)) return
+              if (jumlahRagu > 0 && !confirm(`Masih ada ${jumlahRagu} soal ditandai ragu-ragu 🚩. Yakin ingin submit sekarang?`)) return
               handleSubmit()
             }}
               className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-bold transition shadow-md">
