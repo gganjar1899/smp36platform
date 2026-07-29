@@ -39,6 +39,8 @@ export default function KelolaTugasPage() {
   const [selectedTugas, setSelectedTugas] = useState<Tugas | null>(null)
   const [pengumpulanList, setPengumpulanList] = useState<Pengumpulan[]>([])
   const [totalSiswaKelas, setTotalSiswaKelas] = useState(0)
+  const [belumList, setBelumList] = useState<Opsi[]>([])
+  const [activeTab, setActiveTab] = useState<'sudah' | 'belum'>('sudah')
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [editNilai, setEditNilai] = useState<Record<string, { nilai: string; catatan: string }>>({})
   const [editPoin, setEditPoin] = useState<string>('')
@@ -148,11 +150,14 @@ export default function KelolaTugasPage() {
   async function bukaDetail(t: Tugas) {
     setSelectedTugas(t)
     setEditPoin(String(t.poin))
+    setActiveTab('sudah')
     setLoadingDetail(true)
-    const { data: total } = await supabase
-      .from('siswa_kelas').select('siswa_id', { count: 'exact' })
+    const { data: roster } = await supabase
+      .from('siswa_kelas')
+      .select('siswa_id, siswa:siswa_id(nama)')
       .eq('kelas_id', t.kelas_id).eq('tahun_ajaran', '2026/2027').eq('status', 'aktif')
-    setTotalSiswaKelas(total?.length ?? 0)
+    const rosterList = (roster ?? []).map((r: any) => ({ id: r.siswa_id, nama: r.siswa?.nama ?? '—' }))
+    setTotalSiswaKelas(rosterList.length)
 
     const { data } = await supabase
       .from('pengumpulan_tugas')
@@ -162,6 +167,7 @@ export default function KelolaTugasPage() {
 
     const list = (data ?? []).map((d: any) => ({ ...d, siswa_nama: d.siswa?.nama }))
     setPengumpulanList(list)
+    setBelumList(rosterList.filter(r => !list.some(p => p.siswa_id === r.id)))
     const em: Record<string, { nilai: string; catatan: string }> = {}
     list.forEach((p: Pengumpulan) => { em[p.id] = { nilai: p.nilai?.toString() ?? '', catatan: p.catatan_guru ?? '' } })
     setEditNilai(em)
@@ -244,51 +250,94 @@ export default function KelolaTugasPage() {
 
         {loadingDetail ? (
           <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">Memuat...</div>
-        ) : pengumpulanList.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400 text-sm">Belum ada siswa yang mengumpulkan.</div>
         ) : (
-          <div className="space-y-3">
-            {pengumpulanList.map(p => (
-              <div key={p.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">{p.siswa_nama}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
-                        p.status === 'Terlambat' ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600'
-                      }`}>{p.status ?? 'Tepat Waktu'}</span>
-                      <span className="text-[11px] text-gray-400">
-                        {p.dikumpulkan_at && new Date(p.dikumpulkan_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}
-                      </span>
+          <>
+            <div className="flex gap-1 border-b border-gray-200">
+              <button
+                onClick={() => setActiveTab('sudah')}
+                className={`flex items-center gap-2 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'sudah' ? 'border-[#1a6b3a] text-gray-800' : 'border-transparent text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                📂 Sudah Kumpul
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-50 text-green-700">{pengumpulanList.length}</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('belum')}
+                className={`flex items-center gap-2 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'belum' ? 'border-[#1a6b3a] text-gray-800' : 'border-transparent text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                📁 Belum Kumpul
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{belumList.length}</span>
+              </button>
+            </div>
+
+            {activeTab === 'sudah' ? (
+              pengumpulanList.length === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400 text-sm">Belum ada siswa yang mengumpulkan.</div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {pengumpulanList.map(p => (
+                    <div key={p.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                      <div className="flex items-center gap-2.5 mb-2.5">
+                        <div className="w-8 h-8 rounded-full bg-[#1a6b3a]/10 flex items-center justify-center text-[#1a6b3a] text-xs font-bold flex-shrink-0">
+                          {(p.siswa_nama ?? '?').charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 truncate">{p.siswa_nama}</p>
+                          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
+                            p.status === 'Terlambat' ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600'
+                          }`}>{p.status ?? 'Tepat Waktu'}</span>
+                        </div>
+                      </div>
+
+                      {p.catatan_siswa && <p className="text-xs text-gray-500 mb-2 italic line-clamp-2">"{p.catatan_siswa}"</p>}
+
+                      {(p.file_jawaban || []).length > 0 && (
+                        <div className="flex gap-2 mb-2 flex-wrap">
+                          {(p.file_jawaban || []).map((f, i) => (
+                            <a key={i} href={f.url} target="_blank" rel="noopener noreferrer"
+                              className="text-xs text-blue-500 hover:underline flex items-center gap-1">
+                              📎 {f.nama}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 mb-2">
+                        <input type="number" placeholder="Nilai" min={0} max={selectedTugas.poin}
+                          value={editNilai[p.id]?.nilai ?? ''}
+                          onChange={e => setEditNilai(prev => ({ ...prev, [p.id]: { ...prev[p.id], nilai: e.target.value } }))}
+                          className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center" />
+                        <button onClick={() => handleSimpanNilai(p.id)}
+                          className="flex-1 px-3 py-1.5 bg-[#1a6b3a] text-white text-xs font-semibold rounded-lg hover:bg-[#155730]">
+                          Simpan Nilai
+                        </button>
+                      </div>
+                      <textarea placeholder="Catatan untuk siswa (opsional)" rows={2}
+                        value={editNilai[p.id]?.catatan ?? ''}
+                        onChange={e => setEditNilai(prev => ({ ...prev, [p.id]: { ...prev[p.id], catatan: e.target.value } }))}
+                        className="w-full px-2.5 py-1.5 border border-gray-100 rounded-lg text-xs resize-none focus:outline-none focus:ring-2 focus:ring-green-500/20" />
                     </div>
-                    {p.catatan_siswa && <p className="text-xs text-gray-500 mt-1.5 italic">"{p.catatan_siswa}"</p>}
-                    <div className="flex gap-2 mt-2 flex-wrap">
-                      {(p.file_jawaban || []).map((f, i) => (
-                        <a key={i} href={f.url} target="_blank" rel="noopener noreferrer"
-                          className="text-xs text-blue-500 hover:underline flex items-center gap-1">
-                          📎 {f.nama}
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input type="number" placeholder="Nilai" min={0} max={selectedTugas.poin}
-                      value={editNilai[p.id]?.nilai ?? ''}
-                      onChange={e => setEditNilai(prev => ({ ...prev, [p.id]: { ...prev[p.id], nilai: e.target.value } }))}
-                      className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center" />
-                    <button onClick={() => handleSimpanNilai(p.id)}
-                      className="px-3 py-1.5 bg-[#1a6b3a] text-white text-xs font-semibold rounded-lg hover:bg-[#155730]">
-                      Simpan Nilai
-                    </button>
-                  </div>
+                  ))}
                 </div>
-                <textarea placeholder="Catatan untuk siswa (opsional)" rows={2}
-                  value={editNilai[p.id]?.catatan ?? ''}
-                  onChange={e => setEditNilai(prev => ({ ...prev, [p.id]: { ...prev[p.id], catatan: e.target.value } }))}
-                  className="w-full mt-2 px-3 py-2 border border-gray-100 rounded-lg text-xs resize-none focus:outline-none focus:ring-2 focus:ring-green-500/20" />
+              )
+            ) : belumList.length === 0 ? (
+              <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400 text-sm">Semua siswa sudah mengumpulkan 🎉</div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {belumList.map(s => (
+                  <div key={s.id} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2.5">
+                    <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-[10px] font-bold flex-shrink-0">
+                      {s.nama.charAt(0).toUpperCase()}
+                    </div>
+                    <p className="text-xs text-gray-500 truncate">{s.nama}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </div>
     )
