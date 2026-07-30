@@ -22,7 +22,7 @@ type Jurnal = {
   catatan: string
 }
 
-const JAM_KE = ['1-2','3-4','5-6','7-8','1','2','3','4','5','6','7','8']
+const PERIODE = ['1','2','3','4','5','6','7','8','9','10']
 const METODE = ['Ceramah','Diskusi','Praktik','Project Based','Problem Based','Discovery Learning','Cooperative Learning','Demonstrasi']
 const MEDIA = ['Buku Teks','PPT/Slide','Video','Laptop/Komputer','Lembar Kerja','Alat Peraga','Internet','Papan Tulis']
 const KEPSEK_NAMA = 'Elly Amalya, S.Pd., M.M.Pd.'
@@ -273,10 +273,30 @@ export default function JurnalGuruPage() {
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-500 mb-1 block">Jam Ke *</label>
-              <select value={form.jam_ke} onChange={e => setForm(f => ({ ...f, jam_ke: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
-                {JAM_KE.map(j => <option key={j} value={j}>Jam ke-{j}</option>)}
-              </select>
+              <div className="flex items-center gap-2">
+                <select
+                  value={form.jam_ke.split('-')[0] || '1'}
+                  onChange={e => {
+                    const dari = e.target.value
+                    const sampaiLama = form.jam_ke.includes('-') ? form.jam_ke.split('-')[1] : form.jam_ke.split('-')[0]
+                    const sampai = parseInt(sampaiLama) < parseInt(dari) ? dari : sampaiLama
+                    setForm(f => ({ ...f, jam_ke: dari === sampai ? dari : `${dari}-${sampai}` }))
+                  }}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                  {PERIODE.map(p => <option key={p} value={p}>Jam ke-{p}</option>)}
+                </select>
+                <span className="text-gray-400 text-sm flex-shrink-0">–</span>
+                <select
+                  value={form.jam_ke.includes('-') ? form.jam_ke.split('-')[1] : form.jam_ke.split('-')[0]}
+                  onChange={e => {
+                    const sampai = e.target.value
+                    const dari = form.jam_ke.split('-')[0]
+                    setForm(f => ({ ...f, jam_ke: dari === sampai ? sampai : `${dari}-${sampai}` }))
+                  }}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                  {PERIODE.filter(p => parseInt(p) >= parseInt(form.jam_ke.split('-')[0] || '1')).map(p => <option key={p} value={p}>Jam ke-{p}</option>)}
+                </select>
+              </div>
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-500 mb-1 block">Kelas *</label>
