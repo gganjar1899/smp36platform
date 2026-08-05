@@ -50,7 +50,10 @@ export default function NilaiLegerPage() {
   const [uhKolom, setUhKolom] = useState<{ id: string; judul: string }[]>([])
   const [nilaiTugasMap, setNilaiTugasMap] = useState<Record<string, Record<string, number | null>>>({})
   const [nilaiUhMap, setNilaiUhMap] = useState<Record<string, Record<string, number | null>>>({})
-  const [manualHarianMap, setManualHarianMap] = useState<Record<string, number | null>>({})
+  const [kolomManual, setKolomManual] = useState<{ id: string; label: string }[]>([])
+  const [nilaiManualMap, setNilaiManualMap] = useState<Record<string, Record<string, number | null>>>({}) // kolomId -> siswaId(uuid) -> nilai
+  const [tambahKolomOpen, setTambahKolomOpen] = useState(false)
+  const [labelKolomBaru, setLabelKolomBaru] = useState('')
   const [targetFormatif, setTargetFormatif] = useState(1)
   const [terapkanMsg, setTerapkanMsg] = useState('')
 
@@ -120,8 +123,10 @@ export default function NilaiLegerPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  const [userIdByNisn, setUserIdByNisn] = useState<Record<string, string>>({})
+
   // Ambil data Tugas (nilai dari pengumpulan_tugas) + Ulangan Harian (nilai_akhir dari sesi_siswa)
-  // Sengaja TIDAK menarik PTS/PAS/ASAT — itu tetap dihitung terpisah sebagai Sumatif.
+  // + kolom manual bebas yang sudah dibuat guru. Sengaja TIDAK menarik PTS/PAS/ASAT.
   const fetchNilaiHarian = useCallback(async () => {
     if (!kelas || !mapel || siswaList.length === 0) { setLoadingHarian(false); return }
     setLoadingHarian(true)
@@ -129,10 +134,15 @@ export default function NilaiLegerPage() {
     const { data: kelasRow } = await supabase.from('kelas').select('id, tingkat').eq('nama_rombel', kelas).maybeSingle()
     if (!kelasRow) { setLoadingHarian(false); return }
 
-    const [{ data: mapelPerTingkat }, { data: mataPelajaran }] = await Promise.all([
+    const [{ data: mapelPerTingkat }, { data: mataPelajaran }, { data: usersRows }] = await Promise.all([
       supabase.from('mapel').select('id').eq('nama', mapel).eq('tingkat', kelasRow.tingkat).maybeSingle(),
       supabase.from('mata_pelajaran').select('id').eq('nama_mapel', mapel).maybeSingle(),
+      supabase.from('users').select('id, nisn').in('nisn', siswaList.map(s => s.nisn).filter(Boolean)),
     ])
+
+    const nisnToId: Record<string, string> = {}
+    ;(usersRows || []).forEach((u: any) => { if (u.nisn) nisnToId[u.nisn] = u.id })
+    setUserIdByNisn(nisnToId)
 
     // Tugas untuk kelas + mapel ini
     let tugasRows: any[] = []
@@ -182,16 +192,82 @@ export default function NilaiLegerPage() {
       })
     }
     setNilaiUhMap(uMap)
+
+    // Kolom manual bebas (dibuat guru sendiri, mis. "Tugas 1", "Kuis Bab 2")
+    if (mapelPerTingkat) {
+      const { data: kolomRows } = await supabase
+        .from('nilai_harian_kolom')
+        .select('id, label')
+        .eq('guru_id', guruId).eq('kelas_id', kelasRow.id).eq('mapel_id', mapelPerTingkat.id)
+        .eq('tahun_ajaran', '2026/2027')
+        .order('urutan')
+      const kolom = kolomRows || []
+      setKolomManual(kolom.map((k: any) => ({ id: k.id, label: k.label })))
+
+      if (kolom.length > 0) {
+        const { data: nilaiRows } = await supabase
+          .from('nilai_harian_nilai')
+          .select('kolom_id, siswa_id, nilai')
+          .in('kolom_id', kolom.map((k: any) => k.id))
+        const mMap: Record<string, Record<string, number | null>> = {}
+        ;(nilaiRows || []).forEach((n: any) => {
+          if (!mMap[n.kolom_id]) mMap[n.kolom_id] = {}
+          mMap[n.kolom_id][n.siswa_id] = n.nilai
+        })
+        setNilaiManualMap(mMap)
+      } else {
+        setNilaiManualMap({})
+      }
+    }
+
     setLoadingHarian(false)
-  }, [kelas, mapel, siswaList])
+  }, [kelas, mapel, siswaList, guruId])
 
   useEffect(() => { if (activeTab === 'harian') fetchNilaiHarian() }, [activeTab, fetchNilaiHarian])
+
+  const handleTambahKolom = async () => {
+    if (!labelKolomBaru.trim()) return
+    const kelasRow = await supabase.from('kelas').select('id, tingkat').eq('nama_rombel', kelas).maybeSingle()
+    if (!kelasRow.data) return
+    const mapelRow = await supabase.from('mapel').select('id').eq('nama', mapel).eq('tingkat', kelasRow.data.tingkat).maybeSingle()
+    if (!mapelRow.data) { alert('Mapel tidak ditemukan untuk tingkat kelas ini.'); return }
+
+    const { data, error } = await supabase.from('nilai_harian_kolom').insert({
+      guru_id: guruId, kelas_id: kelasRow.data.id, mapel_id: mapelRow.data.id,
+      label: labelKolomBaru, urutan: kolomManual.length, tahun_ajaran: '2026/2027', semester: '1',
+    }).select().single()
+
+    if (error) { alert('Gagal menambah kolom: ' + error.message); return }
+    setKolomManual(prev => [...prev, { id: data.id, label: data.label }])
+    setLabelKolomBaru('')
+    setTambahKolomOpen(false)
+  }
+
+  const handleHapusKolom = async (kolomId: string) => {
+    if (!confirm('Hapus kolom ini beserta semua nilainya?')) return
+    await supabase.from('nilai_harian_kolom').delete().eq('id', kolomId)
+    setKolomManual(prev => prev.filter(k => k.id !== kolomId))
+    setNilaiManualMap(prev => { const next = { ...prev }; delete next[kolomId]; return next })
+  }
+
+  const handleSimpanNilaiManual = async (kolomId: string, siswaNisn: string, nilai: number | null) => {
+    const siswaId = userIdByNisn[siswaNisn]
+    if (!siswaId) return
+    setNilaiManualMap(prev => ({ ...prev, [kolomId]: { ...prev[kolomId], [siswaId]: nilai } }))
+    await supabase.from('nilai_harian_nilai').upsert(
+      { kolom_id: kolomId, siswa_id: siswaId, nilai, updated_at: new Date().toISOString() },
+      { onConflict: 'kolom_id,siswa_id' }
+    )
+  }
 
   const rataHarian = (nisn: string): number | null => {
     const nilaiTugas = Object.values(nilaiTugasMap[nisn] ?? {}).filter((v): v is number => v !== null && v !== undefined)
     const nilaiUh = Object.values(nilaiUhMap[nisn] ?? {}).filter((v): v is number => v !== null && v !== undefined)
-    const manual = manualHarianMap[nisn]
-    const semua = [...nilaiTugas, ...nilaiUh, ...(manual !== null && manual !== undefined ? [manual] : [])]
+    const siswaId = userIdByNisn[nisn]
+    const nilaiManual = kolomManual
+      .map(k => siswaId ? nilaiManualMap[k.id]?.[siswaId] : null)
+      .filter((v): v is number => v !== null && v !== undefined)
+    const semua = [...nilaiTugas, ...nilaiUh, ...nilaiManual]
     if (semua.length === 0) return null
     return Math.round((semua.reduce((a, b) => a + b, 0) / semua.length) * 100) / 100
   }
@@ -560,7 +636,27 @@ export default function NilaiLegerPage() {
                             💻 {u.judul.length > 14 ? u.judul.slice(0, 14) + '…' : u.judul}
                           </th>
                         ))}
-                        <th className="px-3 py-3 text-center font-semibold text-gray-500 text-xs min-w-[90px]">Nilai Tambahan</th>
+                        {kolomManual.map(k => (
+                          <th key={k.id} className="px-3 py-3 text-center font-semibold text-gray-500 text-xs min-w-[100px]">
+                            <div className="flex items-center justify-center gap-1">
+                              <span>✏️ {k.label}</span>
+                              <button onClick={() => handleHapusKolom(k.id)} className="text-gray-300 hover:text-red-500" title="Hapus kolom">×</button>
+                            </div>
+                          </th>
+                        ))}
+                        <th className="px-3 py-3 text-center min-w-[110px]">
+                          {tambahKolomOpen ? (
+                            <div className="flex items-center gap-1">
+                              <input autoFocus value={labelKolomBaru} onChange={e => setLabelKolomBaru(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && handleTambahKolom()}
+                                placeholder="Nama kolom" className="w-20 px-1.5 py-1 border border-gray-200 rounded text-xs font-normal text-gray-700" />
+                              <button onClick={handleTambahKolom} className="text-emerald-600 hover:text-emerald-800 text-xs font-bold">✓</button>
+                              <button onClick={() => { setTambahKolomOpen(false); setLabelKolomBaru('') }} className="text-gray-400 hover:text-red-500 text-xs">✕</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setTambahKolomOpen(true)} className="text-xs font-medium text-[#1a3a6b] hover:underline">+ Tambah Kolom</button>
+                          )}
+                        </th>
                         <th className="px-3 py-3 text-center font-semibold text-gray-700 text-xs min-w-[80px]">Rata-rata</th>
                       </tr>
                     </thead>
@@ -578,13 +674,20 @@ export default function NilaiLegerPage() {
                               {nilaiUhMap[s.nisn]?.[u.id] ?? <span className="text-gray-300">-</span>}
                             </td>
                           ))}
-                          <td className="px-3 py-2.5 text-center">
-                            <input type="number" min={0} max={100}
-                              value={manualHarianMap[s.nisn] ?? ''}
-                              onChange={e => setManualHarianMap(prev => ({ ...prev, [s.nisn]: e.target.value === '' ? null : Number(e.target.value) }))}
-                              placeholder="-"
-                              className="w-16 text-center px-1.5 py-1 border border-gray-200 rounded-lg text-sm" />
-                          </td>
+                          {kolomManual.map(k => {
+                            const siswaId = userIdByNisn[s.nisn]
+                            const val = siswaId ? nilaiManualMap[k.id]?.[siswaId] : null
+                            return (
+                              <td key={k.id} className="px-3 py-2.5 text-center">
+                                <input type="number" min={0} max={100}
+                                  defaultValue={val ?? ''}
+                                  onBlur={e => handleSimpanNilaiManual(k.id, s.nisn, e.target.value === '' ? null : Number(e.target.value))}
+                                  placeholder="-"
+                                  className="w-16 text-center px-1.5 py-1 border border-gray-200 rounded-lg text-sm" />
+                              </td>
+                            )
+                          })}
+                          <td className="px-3 py-2.5" />
                           <td className="px-3 py-2.5 text-center font-semibold text-[#1a3a6b]">
                             {rataHarian(s.nisn) ?? <span className="text-gray-300 font-normal">-</span>}
                           </td>
@@ -597,7 +700,7 @@ export default function NilaiLegerPage() {
 
               {tugasKolom.length === 0 && uhKolom.length === 0 && (
                 <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 mb-4">
-                  Belum ada Tugas atau Ulangan Harian untuk kelas & mapel ini. Kamu masih bisa isi manual lewat kolom &quot;Nilai Tambahan&quot; di atas.
+                  Belum ada Tugas atau Ulangan Harian untuk kelas & mapel ini. Kamu masih bisa klik &quot;+ Tambah Kolom&quot; di tabel di atas untuk input nilai manual.
                 </p>
               )}
 
