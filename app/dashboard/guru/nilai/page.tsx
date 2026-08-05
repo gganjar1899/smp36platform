@@ -56,6 +56,7 @@ export default function NilaiLegerPage() {
   const [labelKolomBaru, setLabelKolomBaru] = useState('')
   const [targetFormatif, setTargetFormatif] = useState(1)
   const [terapkanMsg, setTerapkanMsg] = useState('')
+  const [guruId, setGuruId] = useState('')
 
   // Ambil identitas guru yang login + kelas/mapel yang benar-benar diajar (guru_mapel)
   useEffect(() => {
@@ -66,6 +67,7 @@ export default function NilaiLegerPage() {
         if (!data.loggedIn || data.role !== 'guru') { setAuthReady(true); return }
 
         setGuruNama(data.nama ?? 'Guru')
+        setGuruId(data.userId)
 
         const { data: userRow } = await supabase
           .from('users').select('nip').eq('id', data.userId).maybeSingle()
