@@ -13,7 +13,7 @@ const KEPSEK_NAMA = 'Elly Amalya, S.Pd., M.M.Pd.'
 const KEPSEK_NIP = '197010131997022001'
 // Identitas guru & mapelSaya/KELAS_SAYA diambil dinamis (lihat useEffect init())
 
-type Siswa = { id: string; nis: string; nama: string; jenis_kelamin: string }
+type Siswa = { id: string; nis: string; nisn: string; nama: string; jenis_kelamin: string }
 type NilaiMap = { [nis: string]: { [key: string]: number | null } }
 
 const KKM = 70
@@ -42,7 +42,17 @@ export default function NilaiLegerPage() {
   const [semester, setSemester] = useState('1')
   const [tahunAjaran] = useState('2026/2027')
   const [jmlFormatif, setJmlFormatif] = useState(3)
-  const [activeTab, setActiveTab] = useState<'leger' | 'cbt'>('leger')
+  const [activeTab, setActiveTab] = useState<'leger' | 'harian' | 'cbt'>('leger')
+
+  // ==== Nilai Harian (Tugas + Ulangan Harian, terpisah dari PTS/PAS/ASAT) ====
+  const [loadingHarian, setLoadingHarian] = useState(false)
+  const [tugasKolom, setTugasKolom] = useState<{ id: string; judul: string }[]>([])
+  const [uhKolom, setUhKolom] = useState<{ id: string; judul: string }[]>([])
+  const [nilaiTugasMap, setNilaiTugasMap] = useState<Record<string, Record<string, number | null>>>({})
+  const [nilaiUhMap, setNilaiUhMap] = useState<Record<string, Record<string, number | null>>>({})
+  const [manualHarianMap, setManualHarianMap] = useState<Record<string, number | null>>({})
+  const [targetFormatif, setTargetFormatif] = useState(1)
+  const [terapkanMsg, setTerapkanMsg] = useState('')
 
   // Ambil identitas guru yang login + kelas/mapel yang benar-benar diajar (guru_mapel)
   useEffect(() => {
@@ -86,7 +96,7 @@ export default function NilaiLegerPage() {
     if (!kelas || !mapel) { setLoading(false); return }
     setLoading(true)
     const { data: siswa } = await supabase
-      .from('siswa').select('id,nis,nama,jenis_kelamin')
+      .from('siswa').select('id,nis,nisn,nama,jenis_kelamin')
       .eq('kelas', kelas).eq('status', 'Aktif').order('nama')
 
     const { data: nilaiData } = await supabase
@@ -109,6 +119,96 @@ export default function NilaiLegerPage() {
   }, [kelas, mapel, semester, tahunAjaran])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // Ambil data Tugas (nilai dari pengumpulan_tugas) + Ulangan Harian (nilai_akhir dari sesi_siswa)
+  // Sengaja TIDAK menarik PTS/PAS/ASAT — itu tetap dihitung terpisah sebagai Sumatif.
+  const fetchNilaiHarian = useCallback(async () => {
+    if (!kelas || !mapel || siswaList.length === 0) { setLoadingHarian(false); return }
+    setLoadingHarian(true)
+
+    const { data: kelasRow } = await supabase.from('kelas').select('id, tingkat').eq('nama_rombel', kelas).maybeSingle()
+    if (!kelasRow) { setLoadingHarian(false); return }
+
+    const [{ data: mapelPerTingkat }, { data: mataPelajaran }] = await Promise.all([
+      supabase.from('mapel').select('id').eq('nama', mapel).eq('tingkat', kelasRow.tingkat).maybeSingle(),
+      supabase.from('mata_pelajaran').select('id').eq('nama_mapel', mapel).maybeSingle(),
+    ])
+
+    // Tugas untuk kelas + mapel ini
+    let tugasRows: any[] = []
+    if (mapelPerTingkat) {
+      const { data } = await supabase.from('tugas').select('id, judul')
+        .eq('kelas_id', kelasRow.id).eq('mapel_id', mapelPerTingkat.id).order('deadline')
+      tugasRows = data || []
+    }
+    setTugasKolom(tugasRows.map(t => ({ id: t.id, judul: t.judul })))
+
+    const tMap: Record<string, Record<string, number | null>> = {}
+    if (tugasRows.length > 0) {
+      const { data: pengumpulan } = await supabase
+        .from('pengumpulan_tugas')
+        .select('tugas_id, nilai, siswa:siswa_id(nisn)')
+        .in('tugas_id', tugasRows.map(t => t.id))
+      ;(pengumpulan || []).forEach((p: any) => {
+        const nisn = p.siswa?.nisn
+        if (!nisn) return
+        if (!tMap[nisn]) tMap[nisn] = {}
+        tMap[nisn][p.tugas_id] = p.nilai
+      })
+    }
+    setNilaiTugasMap(tMap)
+
+    // Ulangan Harian untuk kelas + mapel ini
+    let uhRows: any[] = []
+    if (mataPelajaran) {
+      const { data } = await supabase.from('ujian').select('id, judul')
+        .eq('kelas_id', kelasRow.id).eq('mapel_id', mataPelajaran.id).eq('jenis_ujian', 'ulangan_harian')
+        .order('created_at')
+      uhRows = data || []
+    }
+    setUhKolom(uhRows.map(u => ({ id: u.id, judul: u.judul })))
+
+    const uMap: Record<string, Record<string, number | null>> = {}
+    if (uhRows.length > 0) {
+      const { data: sesi } = await supabase
+        .from('sesi_siswa')
+        .select('ujian_id, nilai_akhir, siswa:siswa_id(nisn)')
+        .in('ujian_id', uhRows.map(u => u.id))
+      ;(sesi || []).forEach((s: any) => {
+        const nisn = s.siswa?.nisn
+        if (!nisn) return
+        if (!uMap[nisn]) uMap[nisn] = {}
+        uMap[nisn][s.ujian_id] = s.nilai_akhir
+      })
+    }
+    setNilaiUhMap(uMap)
+    setLoadingHarian(false)
+  }, [kelas, mapel, siswaList])
+
+  useEffect(() => { if (activeTab === 'harian') fetchNilaiHarian() }, [activeTab, fetchNilaiHarian])
+
+  const rataHarian = (nisn: string): number | null => {
+    const nilaiTugas = Object.values(nilaiTugasMap[nisn] ?? {}).filter((v): v is number => v !== null && v !== undefined)
+    const nilaiUh = Object.values(nilaiUhMap[nisn] ?? {}).filter((v): v is number => v !== null && v !== undefined)
+    const manual = manualHarianMap[nisn]
+    const semua = [...nilaiTugas, ...nilaiUh, ...(manual !== null && manual !== undefined ? [manual] : [])]
+    if (semua.length === 0) return null
+    return Math.round((semua.reduce((a, b) => a + b, 0) / semua.length) * 100) / 100
+  }
+
+  const handleTerapkanKeFormatif = () => {
+    setNilaiMap(prev => {
+      const next = { ...prev }
+      siswaList.forEach(s => {
+        const rata = rataHarian(s.nisn)
+        if (rata === null) return
+        next[s.nis] = { ...next[s.nis], [`F${targetFormatif}`]: rata }
+      })
+      return next
+    })
+    setTerapkanMsg(`Rata-rata Nilai Harian diisikan ke kolom F${targetFormatif} di tab Leger Nilai. Cek & klik "Simpan Nilai" di tab Leger untuk menyimpan permanen.`)
+    setActiveTab('leger')
+  }
 
   const getRataFormatif = (nis: string) => {
     const vals = Array.from({ length: jmlFormatif }, (_, i) => nilaiMap[nis]?.[`F${i + 1}`]).filter(v => v !== null && v !== undefined) as number[]
@@ -238,7 +338,7 @@ export default function NilaiLegerPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 bg-gray-100 p-1 rounded-xl w-fit">
-        {[{ key: 'leger', label: '📊 Leger Nilai' }, { key: 'cbt', label: '💻 Kelola CBT' }].map(t => (
+        {[{ key: 'leger', label: '📊 Leger Nilai' }, { key: 'harian', label: '📝 Nilai Harian' }, { key: 'cbt', label: '💻 Kelola CBT' }].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key as any)}
             className={`px-5 py-2 rounded-lg text-sm font-medium transition
               ${activeTab === t.key ? 'bg-white text-[#1a3a6b] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
@@ -412,6 +512,113 @@ export default function NilaiLegerPage() {
             )}
           </div>
         </>
+      )}
+
+      {activeTab === 'harian' && (
+        <div>
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-5">
+            <div className="flex flex-wrap gap-4 items-end">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">Kelas</label>
+                <select value={kelas} onChange={e => setKelas(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  {kelasSaya.map(k => <option key={k} value={k}>{k}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">Mata Pelajaran</label>
+                <select value={mapel} onChange={e => setMapel(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  {mapelSaya.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <p className="text-xs text-gray-400 max-w-xs">
+                Menarik nilai dari <b>Tugas</b> yang sudah dinilai dan <b>Ulangan Harian</b> (CBT). PTS/PAS/ASAT tidak ikut — itu tetap dihitung terpisah sebagai Sumatif.
+              </p>
+            </div>
+          </div>
+
+          {loadingHarian ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-400">Memuat nilai harian...</div>
+          ) : siswaList.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-400">Pilih kelas & mapel dulu.</div>
+          ) : (
+            <>
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[700px]">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-100">
+                        <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">Nama Siswa</th>
+                        {tugasKolom.map(t => (
+                          <th key={t.id} className="px-3 py-3 text-center font-semibold text-gray-500 text-xs min-w-[90px]">
+                            📝 {t.judul.length > 14 ? t.judul.slice(0, 14) + '…' : t.judul}
+                          </th>
+                        ))}
+                        {uhKolom.map(u => (
+                          <th key={u.id} className="px-3 py-3 text-center font-semibold text-gray-500 text-xs min-w-[90px]">
+                            💻 {u.judul.length > 14 ? u.judul.slice(0, 14) + '…' : u.judul}
+                          </th>
+                        ))}
+                        <th className="px-3 py-3 text-center font-semibold text-gray-500 text-xs min-w-[90px]">Nilai Tambahan</th>
+                        <th className="px-3 py-3 text-center font-semibold text-gray-700 text-xs min-w-[80px]">Rata-rata</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {siswaList.map(s => (
+                        <tr key={s.id}>
+                          <td className="px-4 py-2.5 font-medium text-gray-700">{s.nama}</td>
+                          {tugasKolom.map(t => (
+                            <td key={t.id} className="px-3 py-2.5 text-center text-gray-500">
+                              {nilaiTugasMap[s.nisn]?.[t.id] ?? <span className="text-gray-300">-</span>}
+                            </td>
+                          ))}
+                          {uhKolom.map(u => (
+                            <td key={u.id} className="px-3 py-2.5 text-center text-gray-500">
+                              {nilaiUhMap[s.nisn]?.[u.id] ?? <span className="text-gray-300">-</span>}
+                            </td>
+                          ))}
+                          <td className="px-3 py-2.5 text-center">
+                            <input type="number" min={0} max={100}
+                              value={manualHarianMap[s.nisn] ?? ''}
+                              onChange={e => setManualHarianMap(prev => ({ ...prev, [s.nisn]: e.target.value === '' ? null : Number(e.target.value) }))}
+                              placeholder="-"
+                              className="w-16 text-center px-1.5 py-1 border border-gray-200 rounded-lg text-sm" />
+                          </td>
+                          <td className="px-3 py-2.5 text-center font-semibold text-[#1a3a6b]">
+                            {rataHarian(s.nisn) ?? <span className="text-gray-300 font-normal">-</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {tugasKolom.length === 0 && uhKolom.length === 0 && (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 mb-4">
+                  Belum ada Tugas atau Ulangan Harian untuk kelas & mapel ini. Kamu masih bisa isi manual lewat kolom &quot;Nilai Tambahan&quot; di atas.
+                </p>
+              )}
+
+              <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center gap-3">
+                <label className="text-sm text-gray-600">Terapkan rata-rata ini ke kolom</label>
+                <select value={targetFormatif} onChange={e => setTargetFormatif(Number(e.target.value))}
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm">
+                  {Array.from({ length: jmlFormatif }, (_, i) => i + 1).map(n => <option key={n} value={n}>F{n}</option>)}
+                </select>
+                <label className="text-sm text-gray-600">di Leger Nilai</label>
+                <button onClick={handleTerapkanKeFormatif}
+                  className="ml-auto px-5 py-2 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-lg text-sm font-semibold">
+                  Terapkan ke Leger →
+                </button>
+              </div>
+              {terapkanMsg && (
+                <p className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 mt-3">{terapkanMsg}</p>
+              )}
+            </>
+          )}
+        </div>
       )}
 
       {activeTab === 'cbt' && (
