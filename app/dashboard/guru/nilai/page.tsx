@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import * as XLSX from 'xlsx'
 
@@ -26,6 +27,7 @@ const getKualifikasi = (nilai: number | null) => {
 }
 
 export default function NilaiLegerPage() {
+  const router = useRouter()
   const [guruNip, setGuruNip] = useState('')
   const [guruNama, setGuruNama] = useState('Guru')
   const [mapelSaya, setMapelSaya] = useState<string[]>([])
@@ -417,7 +419,7 @@ export default function NilaiLegerPage() {
       {/* Tabs */}
       <div className="flex gap-1 mb-5 bg-gray-100 p-1 rounded-xl w-fit">
         {[{ key: 'leger', label: '📊 Leger Nilai' }, { key: 'harian', label: '📝 Nilai Harian' }, { key: 'cbt', label: '💻 Kelola CBT' }].map(t => (
-          <button key={t.key} onClick={() => setActiveTab(t.key as any)}
+          <button key={t.key} onClick={() => t.key === 'cbt' ? router.push('/dashboard/guru/ujian') : setActiveTab(t.key as any)}
             className={`px-5 py-2 rounded-lg text-sm font-medium transition
               ${activeTab === t.key ? 'bg-white text-[#1a3a6b] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
             {t.label}
@@ -778,7 +780,7 @@ export default function NilaiLegerPage() {
               </div>
             ))}
           </div>
-          <a href="/dashboard/admin/cbt"
+          <a href="/dashboard/guru/ujian"
             className="inline-flex items-center gap-2 px-6 py-3 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-xl text-sm font-semibold transition">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
