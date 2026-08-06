@@ -610,8 +610,8 @@ export default function NilaiLegerPage() {
                   {mapelSaya.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
-              <p className="text-xs text-gray-400 max-w-xs">
-                Menarik nilai dari <b>Tugas</b> yang sudah dinilai dan <b>Ulangan Harian</b> (CBT). PTS/PAS/ASAT tidak ikut — itu tetap dihitung terpisah sebagai Sumatif.
+              <p className="text-sm text-gray-400 max-w-sm leading-relaxed">
+                Menarik nilai dari <span className="font-semibold text-gray-500">Tugas</span> yang sudah dinilai dan <span className="font-semibold text-gray-500">Ulangan Harian</span> (CBT). PTS/PAS/ASAT tidak ikut — tetap dihitung terpisah sebagai Sumatif.
               </p>
             </div>
           </div>
@@ -622,57 +622,79 @@ export default function NilaiLegerPage() {
             <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-400">Pilih kelas & mapel dulu.</div>
           ) : (
             <>
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4">
+              {/* Ringkasan */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                {[
+                  { label: 'Siswa', value: siswaList.length, color: 'text-gray-600 bg-gray-50 border-gray-200' },
+                  { label: 'Komponen Tugas', value: tugasKolom.length, color: 'text-blue-600 bg-blue-50 border-blue-200' },
+                  { label: 'Ulangan Harian', value: uhKolom.length, color: 'text-purple-600 bg-purple-50 border-purple-200' },
+                  { label: 'Kolom Manual', value: kolomManual.length, color: 'text-amber-600 bg-amber-50 border-amber-200' },
+                ].map(s => (
+                  <div key={s.label} className={`rounded-xl border p-3.5 text-center ${s.color}`}>
+                    <p className="text-2xl font-bold">{s.value}</p>
+                    <p className="text-xs font-medium mt-0.5">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4 shadow-sm">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-[700px]">
+                  <table className="w-full text-sm min-w-[760px]">
                     <thead>
-                      <tr className="bg-gray-50 border-b border-gray-100">
-                        <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">Nama Siswa</th>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        <th className="px-4 py-3.5 text-left font-semibold text-gray-600 text-sm">Nama Siswa</th>
                         {tugasKolom.map(t => (
-                          <th key={t.id} className="px-3 py-3 text-center font-semibold text-gray-500 text-xs min-w-[90px]">
-                            📝 {t.judul.length > 14 ? t.judul.slice(0, 14) + '…' : t.judul}
+                          <th key={t.id} className="px-3 py-3.5 text-center min-w-[110px]">
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold">
+                              📝 {t.judul.length > 14 ? t.judul.slice(0, 14) + '…' : t.judul}
+                            </span>
                           </th>
                         ))}
                         {uhKolom.map(u => (
-                          <th key={u.id} className="px-3 py-3 text-center font-semibold text-gray-500 text-xs min-w-[90px]">
-                            💻 {u.judul.length > 14 ? u.judul.slice(0, 14) + '…' : u.judul}
+                          <th key={u.id} className="px-3 py-3.5 text-center min-w-[110px]">
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-purple-50 text-purple-700 text-xs font-semibold">
+                              💻 {u.judul.length > 14 ? u.judul.slice(0, 14) + '…' : u.judul}
+                            </span>
                           </th>
                         ))}
                         {kolomManual.map(k => (
-                          <th key={k.id} className="px-3 py-3 text-center font-semibold text-gray-500 text-xs min-w-[100px]">
-                            <div className="flex items-center justify-center gap-1">
-                              <span>✏️ {k.label}</span>
-                              <button onClick={() => handleHapusKolom(k.id)} className="text-gray-300 hover:text-red-500" title="Hapus kolom">×</button>
-                            </div>
+                          <th key={k.id} className="px-3 py-3.5 text-center min-w-[120px]">
+                            <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-50 text-amber-700 text-xs font-semibold">
+                              ✏️ {k.label}
+                              <button onClick={() => handleHapusKolom(k.id)} className="text-amber-400 hover:text-red-500 font-bold leading-none" title="Hapus kolom">×</button>
+                            </span>
                           </th>
                         ))}
-                        <th className="px-3 py-3 text-center min-w-[110px]">
+                        <th className="px-3 py-3.5 text-center min-w-[130px]">
                           {tambahKolomOpen ? (
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1.5 justify-center">
                               <input autoFocus value={labelKolomBaru} onChange={e => setLabelKolomBaru(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && handleTambahKolom()}
-                                placeholder="Nama kolom" className="w-20 px-1.5 py-1 border border-gray-200 rounded text-xs font-normal text-gray-700" />
-                              <button onClick={handleTambahKolom} className="text-emerald-600 hover:text-emerald-800 text-xs font-bold">✓</button>
-                              <button onClick={() => { setTambahKolomOpen(false); setLabelKolomBaru('') }} className="text-gray-400 hover:text-red-500 text-xs">✕</button>
+                                placeholder="Nama kolom" className="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-sm font-normal text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                              <button onClick={handleTambahKolom} className="w-6 h-6 flex items-center justify-center rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 text-xs font-bold">✓</button>
+                              <button onClick={() => { setTambahKolomOpen(false); setLabelKolomBaru('') }} className="w-6 h-6 flex items-center justify-center rounded-lg bg-gray-100 text-gray-400 hover:bg-gray-200 text-xs">✕</button>
                             </div>
                           ) : (
-                            <button onClick={() => setTambahKolomOpen(true)} className="text-xs font-medium text-[#1a3a6b] hover:underline">+ Tambah Kolom</button>
+                            <button onClick={() => setTambahKolomOpen(true)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#1a3a6b] text-white text-xs font-semibold hover:bg-[#15305a] transition">
+                              + Tambah Kolom
+                            </button>
                           )}
                         </th>
-                        <th className="px-3 py-3 text-center font-semibold text-gray-700 text-xs min-w-[80px]">Rata-rata</th>
+                        <th className="px-4 py-3.5 text-center font-semibold text-gray-600 text-sm min-w-[90px]">Rata-rata</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody className="divide-y divide-gray-100">
                       {siswaList.map(s => (
-                        <tr key={s.id}>
-                          <td className="px-4 py-2.5 font-medium text-gray-700">{s.nama}</td>
+                        <tr key={s.id} className="hover:bg-gray-50/60 transition">
+                          <td className="px-4 py-3 font-medium text-gray-700 text-sm">{s.nama}</td>
                           {tugasKolom.map(t => (
-                            <td key={t.id} className="px-3 py-2.5 text-center text-gray-500">
+                            <td key={t.id} className="px-3 py-3 text-center text-sm text-gray-600">
                               {nilaiTugasMap[s.nisn]?.[t.id] ?? <span className="text-gray-300">-</span>}
                             </td>
                           ))}
                           {uhKolom.map(u => (
-                            <td key={u.id} className="px-3 py-2.5 text-center text-gray-500">
+                            <td key={u.id} className="px-3 py-3 text-center text-sm text-gray-600">
                               {nilaiUhMap[s.nisn]?.[u.id] ?? <span className="text-gray-300">-</span>}
                             </td>
                           ))}
@@ -685,13 +707,19 @@ export default function NilaiLegerPage() {
                                   defaultValue={val ?? ''}
                                   onBlur={e => handleSimpanNilaiManual(k.id, s.nisn, e.target.value === '' ? null : Number(e.target.value))}
                                   placeholder="-"
-                                  className="w-16 text-center px-1.5 py-1 border border-gray-200 rounded-lg text-sm" />
+                                  className="w-16 text-center px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                               </td>
                             )
                           })}
-                          <td className="px-3 py-2.5" />
-                          <td className="px-3 py-2.5 text-center font-semibold text-[#1a3a6b]">
-                            {rataHarian(s.nisn) ?? <span className="text-gray-300 font-normal">-</span>}
+                          <td className="px-3 py-3" />
+                          <td className="px-4 py-3 text-center">
+                            {rataHarian(s.nisn) !== null ? (
+                              <span className="inline-block px-2.5 py-1 rounded-lg bg-[#1a3a6b]/10 text-[#1a3a6b] text-sm font-bold">
+                                {rataHarian(s.nisn)}
+                              </span>
+                            ) : (
+                              <span className="text-gray-300 text-sm">-</span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -701,25 +729,25 @@ export default function NilaiLegerPage() {
               </div>
 
               {tugasKolom.length === 0 && uhKolom.length === 0 && (
-                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 mb-4">
-                  Belum ada Tugas atau Ulangan Harian untuk kelas & mapel ini. Kamu masih bisa klik &quot;+ Tambah Kolom&quot; di tabel di atas untuk input nilai manual.
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4 leading-relaxed">
+                  💡 Belum ada Tugas atau Ulangan Harian untuk kelas & mapel ini. Kamu masih bisa klik <span className="font-semibold">&quot;+ Tambah Kolom&quot;</span> di tabel di atas untuk input nilai manual.
                 </p>
               )}
 
-              <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center gap-3">
+              <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center gap-3 shadow-sm">
                 <label className="text-sm text-gray-600">Terapkan rata-rata ini ke kolom</label>
                 <select value={targetFormatif} onChange={e => setTargetFormatif(Number(e.target.value))}
-                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm">
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500">
                   {Array.from({ length: jmlFormatif }, (_, i) => i + 1).map(n => <option key={n} value={n}>F{n}</option>)}
                 </select>
                 <label className="text-sm text-gray-600">di Leger Nilai</label>
                 <button onClick={handleTerapkanKeFormatif}
-                  className="ml-auto px-5 py-2 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-lg text-sm font-semibold">
+                  className="ml-auto px-5 py-2.5 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-lg text-sm font-semibold transition">
                   Terapkan ke Leger →
                 </button>
               </div>
               {terapkanMsg && (
-                <p className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 mt-3">{terapkanMsg}</p>
+                <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 mt-3 leading-relaxed">✓ {terapkanMsg}</p>
               )}
             </>
           )}
