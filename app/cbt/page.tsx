@@ -60,6 +60,7 @@ export default function CBTSiswaPage() {
   const [warningLevel, setWarningLevel] = useState<WarningLevel>(0)
   const [warningMsg, setWarningMsg] = useState('')
   const [showWarning, setShowWarning] = useState(false)
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [cheating, setCheating] = useState(false)
 
@@ -502,6 +503,44 @@ export default function CBTSiswaPage() {
   if (step === 'ujian' && p) return (
     <div className="min-h-screen bg-gray-50 select-none" style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}>
 
+      {/* Modal konfirmasi submit -- pengganti confirm() bawaan browser yang tombolnya ambigu (OK/Cancel) */}
+      {showSubmitConfirm && (() => {
+        const belumDijawab = pertanyaanList.length - Object.keys(jawaban).length
+        const jumlahRagu = raguList.size
+        return (
+          <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+              <div className="text-center mb-4">
+                <div className="text-4xl mb-2">📝</div>
+                <h3 className="font-bold text-gray-800">Yakin Submit Ujian Sekarang?</h3>
+              </div>
+
+              {(belumDijawab > 0 || jumlahRagu > 0) && (
+                <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4 space-y-1">
+                  {belumDijawab > 0 && (
+                    <p className="text-xs text-orange-700">⚠️ Masih ada <b>{belumDijawab} soal</b> belum dijawab</p>
+                  )}
+                  {jumlahRagu > 0 && (
+                    <p className="text-xs text-orange-700">🚩 Masih ada <b>{jumlahRagu} soal</b> ditandai ragu-ragu</p>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <button onClick={() => { setShowSubmitConfirm(false); handleSubmit() }}
+                  className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold text-sm transition shadow-md">
+                  Ya, Submit Sekarang
+                </button>
+                <button onClick={() => setShowSubmitConfirm(false)}
+                  className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold text-sm transition">
+                  Kembali, Cek Jawaban Lagi
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Warning Overlay */}
       {showWarning && (
         <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none
@@ -640,13 +679,7 @@ export default function CBTSiswaPage() {
               Selanjutnya →
             </button>
           ) : (
-            <button onClick={() => {
-              const belumDijawab = pertanyaanList.length - Object.keys(jawaban).length
-              const jumlahRagu = raguList.size
-              if (belumDijawab > 0 && !confirm(`Masih ada ${belumDijawab} soal belum dijawab. Yakin ingin submit?`)) return
-              if (jumlahRagu > 0 && !confirm(`Masih ada ${jumlahRagu} soal ditandai ragu-ragu 🚩. Yakin ingin submit sekarang?`)) return
-              handleSubmit()
-            }}
+            <button onClick={() => setShowSubmitConfirm(true)}
               className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-bold transition shadow-md">
               ✅ Submit Ujian
             </button>
