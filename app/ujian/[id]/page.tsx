@@ -293,49 +293,22 @@ export default function KerjakanUjianPage() {
       if (timerRef.current) clearInterval(timerRef.current)
 
       try {
-        // Kunci jawaban baru diambil di titik submit (bukan saat mengerjakan),
-        // supaya tidak nongol di tab Network selama siswa masih mengerjakan.
-        const soalIds = soalList.map((s) => s.id)
-        const { data: kunciRows } = await supabase
-          .from('bank_soal')
-          .select('id, jawaban_benar')
-          .in('id', soalIds)
-        const kunciMap = new Map((kunciRows ?? []).map((k) => [k.id as string, k.jawaban_benar as string | null]))
+        // Penilaian dilakukan di server (/api/ujian/submit) — kunci jawaban tidak pernah
+        // dikirim ke browser siswa, dan nilai akhir dihitung + disimpan di sisi server.
+        const res = await fetch('/api/ujian/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sesiId: sesi.id, diskualifikasi }),
+        })
+        const hasil = await res.json()
 
-        let poinPg = 0
-        let bobotPg = 0
-        let adaNonPg = false
-
-        for (const s of soalList) {
-          const j = jawabanRef.current[s.id]
-          if (s.jenis === 'pilihan_ganda') {
-            bobotPg += s.bobot_nilai
-            const benar = !!j?.pg && j.pg === kunciMap.get(s.id)
-            const poin = benar ? s.bobot_nilai : 0
-            poinPg += poin
-            if (j?.rowId) {
-              await supabase.from('jawaban_siswa').update({ benar, poin_didapat: poin }).eq('id', j.rowId)
-            }
-          } else {
-            adaNonPg = true
-          }
+        if (!res.ok) {
+          alert(hasil?.error ?? 'Gagal mengirim ujian. Coba lagi.')
+          return
         }
 
-        const nilaiOtomatis = bobotPg > 0 ? Math.round((poinPg / bobotPg) * 10000) / 100 : null
-        const nilaiAkhir = !adaNonPg ? nilaiOtomatis : null
-        const statusAkhir = diskualifikasi ? 'diskualifikasi' : 'selesai'
-
-        await supabase
-          .from('sesi_siswa')
-          .update({
-            status: statusAkhir,
-            waktu_selesai: new Date().toISOString(),
-            nilai_otomatis: nilaiOtomatis,
-            nilai_akhir: nilaiAkhir,
-          })
-          .eq('id', sesi.id)
-
-        setSesi((prev) => (prev ? { ...prev, status: statusAkhir, nilai_akhir: nilaiAkhir } : prev))
+        const statusAkhir = hasil.status as 'selesai' | 'diskualifikasi'
+        setSesi((prev) => (prev ? { ...prev, status: statusAkhir, nilai_akhir: hasil.nilaiAkhir } : prev))
         setStep(statusAkhir)
         if (document.fullscreenElement) {
           document.exitFullscreen().catch(() => {})
@@ -344,7 +317,7 @@ export default function KerjakanUjianPage() {
         setSubmitting(false)
       }
     },
-    [sesi, soalList, submitting]
+    [sesi, submitting]
   )
 
   useEffect(() => {
