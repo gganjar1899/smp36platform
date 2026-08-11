@@ -177,20 +177,18 @@ export default function KelolaTugasPage() {
   async function handleSimpanNilai(pengumpulanId: string) {
     const e = editNilai[pengumpulanId]
     if (!e) return
-    await supabase.from('pengumpulan_tugas').update({
-      nilai: e.nilai ? parseFloat(e.nilai) : null,
-      catatan_guru: e.catatan || null,
-      dinilai_at: new Date().toISOString(),
-    }).eq('id', pengumpulanId)
-
-    const p = pengumpulanList.find(x => x.id === pengumpulanId)
-    if (p) {
-      await supabase.from('notifikasi').insert({
-        user_id: p.siswa_id,
-        judul: 'Tugas sudah dinilai',
-        pesan: `Tugas "${selectedTugas?.judul}" sudah dinilai: ${e.nilai}`,
-        link: '/dashboard/siswa/tugas',
-      })
+    const res = await fetch('/api/tugas/nilai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pengumpulanId, nilai: e.nilai || null, catatan: e.catatan || null }),
+    })
+    const hasil = await res.json()
+    if (!res.ok) {
+      alert(hasil?.error ?? 'Gagal menyimpan nilai.')
+      return
+    }
+    if (hasil.pengumpulan) {
+      setPengumpulanList(prev => prev.map(p => p.id === pengumpulanId ? { ...p, ...hasil.pengumpulan } : p))
     }
     if (selectedTugas) bukaDetail(selectedTugas)
   }

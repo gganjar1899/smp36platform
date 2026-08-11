@@ -81,26 +81,14 @@ export default function TugasSiswaPage() {
       }
 
       const terlambat = new Date() > new Date(t.deadline)
-      const { data } = await supabase.from('pengumpulan_tugas').upsert({
-        tugas_id: t.id, siswa_id: siswaId,
-        file_jawaban: fileJawaban.length > 0 ? fileJawaban : (pengumpulanMap[t.id]?.file_jawaban ?? []),
-        catatan_siswa: catatan[t.id] || pengumpulanMap[t.id]?.catatan_siswa || null,
-        status: terlambat ? 'Terlambat' : 'Tepat Waktu',
-        dikumpulkan_at: new Date().toISOString(),
-      }, { onConflict: 'tugas_id,siswa_id' }).select().single()
-
-      if (data) setPengumpulanMap(prev => ({ ...prev, [t.id]: data }))
-
-      // Notifikasi ke guru pembuat tugas
-      const { data: tugasDetail } = await supabase.from('tugas').select('dibuat_oleh').eq('id', t.id).single()
-      if (tugasDetail) {
-        await supabase.from('notifikasi').insert({
-          user_id: tugasDetail.dibuat_oleh,
-          judul: 'Tugas dikumpulkan',
-          pesan: `Ada siswa mengumpulkan tugas "${t.judul}"${terlambat ? ' (terlambat)' : ''}`,
-          link: '/dashboard/guru/tugas',
-        })
-      }
+      const res = await fetch('/api/tugas/kumpulkan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tugasId: t.id, fileJawaban, catatan: catatan[t.id] || null }),
+      })
+      const hasil = await res.json()
+      if (!res.ok) throw new Error(hasil?.error ?? 'Gagal mengumpulkan tugas.')
+      if (hasil.pengumpulan) setPengumpulanMap(prev => ({ ...prev, [t.id]: hasil.pengumpulan }))
       setExpanded(null)
     } catch (err: any) {
       alert('Gagal mengumpulkan: ' + err.message)
