@@ -138,8 +138,11 @@ export default function NilaiLegerPage() {
     const { data: kelasRow } = await supabase.from('kelas').select('id, tingkat').eq('nama_rombel', kelas).maybeSingle()
     if (!kelasRow) { setLoadingHarian(false); return }
 
-    const [{ data: mapelPerTingkat }, { data: mataPelajaran }, { data: usersRows }] = await Promise.all([
-      supabase.from('mapel').select('id').eq('nama', mapel).eq('tingkat', kelasRow.tingkat).maybeSingle(),
+    // Resolusi mapel_id (tabel "mapel") lewat penugasan mengajar guru (mapel_guru) — bukan
+    // menebak dari nama teks, karena nama di "mapel" (IPA/IPS/PJOK/PKN) beda format dengan
+    // nama lengkap di "mata_pelajaran" yang dipakai buat isi dropdown mapel.
+    const [{ data: mapelGuruRow }, { data: mataPelajaran }, { data: usersRows }] = await Promise.all([
+      supabase.from('mapel_guru').select('mapel_id').eq('guru_id', guruId).eq('kelas_id', kelasRow.id).eq('tahun_ajaran', '2026/2027').maybeSingle(),
       supabase.from('mata_pelajaran').select('id').eq('nama_mapel', mapel).maybeSingle(),
       supabase.from('users').select('id, nisn').in('nisn', siswaList.map(s => s.nisn).filter(Boolean)),
     ])
@@ -150,9 +153,9 @@ export default function NilaiLegerPage() {
 
     // Tugas untuk kelas + mapel ini
     let tugasRows: any[] = []
-    if (mapelPerTingkat) {
+    if (mapelGuruRow) {
       const { data } = await supabase.from('tugas').select('id, judul')
-        .eq('kelas_id', kelasRow.id).eq('mapel_id', mapelPerTingkat.id).order('deadline')
+        .eq('kelas_id', kelasRow.id).eq('mapel_id', mapelGuruRow.mapel_id).order('deadline')
       tugasRows = data || []
     }
     setTugasKolom(tugasRows.map(t => ({ id: t.id, judul: t.judul })))
@@ -198,11 +201,11 @@ export default function NilaiLegerPage() {
     setNilaiUhMap(uMap)
 
     // Kolom manual bebas (dibuat guru sendiri, mis. "Tugas 1", "Kuis Bab 2")
-    if (mapelPerTingkat) {
+    if (mapelGuruRow) {
       const { data: kolomRows } = await supabase
         .from('nilai_harian_kolom')
         .select('id, label')
-        .eq('guru_id', guruId).eq('kelas_id', kelasRow.id).eq('mapel_id', mapelPerTingkat.id)
+        .eq('guru_id', guruId).eq('kelas_id', kelasRow.id).eq('mapel_id', mapelGuruRow.mapel_id)
         .eq('tahun_ajaran', '2026/2027')
         .order('urutan')
       const kolom = kolomRows || []
@@ -233,11 +236,21 @@ export default function NilaiLegerPage() {
     if (!labelKolomBaru.trim()) return
     const kelasRow = await supabase.from('kelas').select('id, tingkat').eq('nama_rombel', kelas).maybeSingle()
     if (!kelasRow.data) return
-    const mapelRow = await supabase.from('mapel').select('id').eq('nama', mapel).eq('tingkat', kelasRow.data.tingkat).maybeSingle()
-    if (!mapelRow.data) { alert('Mapel tidak ditemukan untuk tingkat kelas ini.'); return }
+    // Ambil mapel_id langsung dari penugasan mengajar guru (mapel_guru), bukan menebak dari
+    // nama teks — soalnya nama mapel di tabel "mapel" (IPA/IPS/PJOK/PKN, disingkat) beda format
+    // dengan nama di "mata_pelajaran" (Ilmu Pengetahuan Alam, dst — nama lengkap) yang dipakai
+    // buat isi dropdown mapel di halaman ini.
+    const mapelRow = await supabase
+      .from('mapel_guru')
+      .select('mapel_id')
+      .eq('guru_id', guruId)
+      .eq('kelas_id', kelasRow.data.id)
+      .eq('tahun_ajaran', '2026/2027')
+      .maybeSingle()
+    if (!mapelRow.data) { alert('Penugasan mengajar untuk kelas ini tidak ditemukan. Hubungi admin untuk cek data guru_mapel/mapel_guru.'); return }
 
     const { data, error } = await supabase.from('nilai_harian_kolom').insert({
-      guru_id: guruId, kelas_id: kelasRow.data.id, mapel_id: mapelRow.data.id,
+      guru_id: guruId, kelas_id: kelasRow.data.id, mapel_id: mapelRow.data.mapel_id,
       label: labelKolomBaru, urutan: kolomManual.length, tahun_ajaran: '2026/2027', semester: '1',
     }).select().single()
 
