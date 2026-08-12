@@ -14,6 +14,20 @@ const KEPSEK_NAMA = 'Elly Amalya, S.Pd., M.M.Pd.'
 const KEPSEK_NIP = '197010131997022001'
 // Identitas guru & mapelSaya/KELAS_SAYA diambil dinamis (lihat useEffect init())
 
+// Nama mapel di dropdown (dari mata_pelajaran.nama_mapel, nama lengkap) beda format
+// dengan nama di tabel "mapel" (nama singkat) buat 4 mapel ini — jadi perlu diterjemahkan
+// dulu sebelum dicocokkan. Lebih stabil daripada gantung ke mapel_guru/guru_mapel, yang
+// datanya ternyata belum lengkap diisi buat sebagian mapel (BK, PJOK, PKN, IPS, dst).
+const NAMA_MAPEL_KE_TABEL_MAPEL: Record<string, string> = {
+  'Ilmu Pengetahuan Alam': 'IPA',
+  'Ilmu Pengetahuan Sosial': 'IPS',
+  'Pendidikan Jasmani': 'PJOK',
+  'Pendidikan Pancasila': 'PKN',
+}
+function namaMapelUntukTabelMapel(namaDropdown: string) {
+  return NAMA_MAPEL_KE_TABEL_MAPEL[namaDropdown] ?? namaDropdown
+}
+
 type Siswa = { id: string; nis: string; nisn: string; nama: string; jenis_kelamin: string }
 type NilaiMap = { [nis: string]: { [key: string]: number | null } }
 
@@ -138,11 +152,10 @@ export default function NilaiLegerPage() {
     const { data: kelasRow } = await supabase.from('kelas').select('id, tingkat').eq('nama_rombel', kelas).maybeSingle()
     if (!kelasRow) { setLoadingHarian(false); return }
 
-    // Resolusi mapel_id (tabel "mapel") lewat penugasan mengajar guru (mapel_guru) — bukan
-    // menebak dari nama teks, karena nama di "mapel" (IPA/IPS/PJOK/PKN) beda format dengan
-    // nama lengkap di "mata_pelajaran" yang dipakai buat isi dropdown mapel.
-    const [{ data: mapelGuruRow }, { data: mataPelajaran }, { data: usersRows }] = await Promise.all([
-      supabase.from('mapel_guru').select('mapel_id').eq('guru_id', guruId).eq('kelas_id', kelasRow.id).eq('tahun_ajaran', '2026/2027').maybeSingle(),
+    // Resolusi mapel_id (tabel "mapel") pakai kamus terjemahan nama — bukan gantung ke
+    // mapel_guru, soalnya tabel itu ternyata belum lengkap diisi buat sebagian mapel.
+    const [{ data: mapelRow }, { data: mataPelajaran }, { data: usersRows }] = await Promise.all([
+      supabase.from('mapel').select('id').eq('nama', namaMapelUntukTabelMapel(mapel)).eq('tingkat', kelasRow.tingkat).maybeSingle(),
       supabase.from('mata_pelajaran').select('id').eq('nama_mapel', mapel).maybeSingle(),
       supabase.from('users').select('id, nisn').in('nisn', siswaList.map(s => s.nisn).filter(Boolean)),
     ])
@@ -153,9 +166,9 @@ export default function NilaiLegerPage() {
 
     // Tugas untuk kelas + mapel ini
     let tugasRows: any[] = []
-    if (mapelGuruRow) {
+    if (mapelRow) {
       const { data } = await supabase.from('tugas').select('id, judul')
-        .eq('kelas_id', kelasRow.id).eq('mapel_id', mapelGuruRow.mapel_id).order('deadline')
+        .eq('kelas_id', kelasRow.id).eq('mapel_id', mapelRow.id).order('deadline')
       tugasRows = data || []
     }
     setTugasKolom(tugasRows.map(t => ({ id: t.id, judul: t.judul })))
@@ -201,11 +214,11 @@ export default function NilaiLegerPage() {
     setNilaiUhMap(uMap)
 
     // Kolom manual bebas (dibuat guru sendiri, mis. "Tugas 1", "Kuis Bab 2")
-    if (mapelGuruRow) {
+    if (mapelRow) {
       const { data: kolomRows } = await supabase
         .from('nilai_harian_kolom')
         .select('id, label')
-        .eq('guru_id', guruId).eq('kelas_id', kelasRow.id).eq('mapel_id', mapelGuruRow.mapel_id)
+        .eq('guru_id', guruId).eq('kelas_id', kelasRow.id).eq('mapel_id', mapelRow.id)
         .eq('tahun_ajaran', '2026/2027')
         .order('urutan')
       const kolom = kolomRows || []
@@ -236,21 +249,18 @@ export default function NilaiLegerPage() {
     if (!labelKolomBaru.trim()) return
     const kelasRow = await supabase.from('kelas').select('id, tingkat').eq('nama_rombel', kelas).maybeSingle()
     if (!kelasRow.data) return
-    // Ambil mapel_id langsung dari penugasan mengajar guru (mapel_guru), bukan menebak dari
-    // nama teks — soalnya nama mapel di tabel "mapel" (IPA/IPS/PJOK/PKN, disingkat) beda format
-    // dengan nama di "mata_pelajaran" (Ilmu Pengetahuan Alam, dst — nama lengkap) yang dipakai
-    // buat isi dropdown mapel di halaman ini.
+    // Nama mapel di dropdown (nama lengkap, dari mata_pelajaran) diterjemahkan dulu ke nama
+    // singkat di tabel "mapel" buat 4 mapel yang formatnya beda (lihat NAMA_MAPEL_KE_TABEL_MAPEL).
     const mapelRow = await supabase
-      .from('mapel_guru')
-      .select('mapel_id')
-      .eq('guru_id', guruId)
-      .eq('kelas_id', kelasRow.data.id)
-      .eq('tahun_ajaran', '2026/2027')
+      .from('mapel')
+      .select('id')
+      .eq('nama', namaMapelUntukTabelMapel(mapel))
+      .eq('tingkat', kelasRow.data.tingkat)
       .maybeSingle()
-    if (!mapelRow.data) { alert('Penugasan mengajar untuk kelas ini tidak ditemukan. Hubungi admin untuk cek data guru_mapel/mapel_guru.'); return }
+    if (!mapelRow.data) { alert('Mapel tidak ditemukan untuk tingkat kelas ini. Hubungi admin untuk cek data mapel.'); return }
 
     const { data, error } = await supabase.from('nilai_harian_kolom').insert({
-      guru_id: guruId, kelas_id: kelasRow.data.id, mapel_id: mapelRow.data.mapel_id,
+      guru_id: guruId, kelas_id: kelasRow.data.id, mapel_id: mapelRow.data.id,
       label: labelKolomBaru, urutan: kolomManual.length, tahun_ajaran: '2026/2027', semester: '1',
     }).select().single()
 
