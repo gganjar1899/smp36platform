@@ -70,6 +70,8 @@ export default function NilaiLegerPage() {
   const [nilaiManualMap, setNilaiManualMap] = useState<Record<string, Record<string, number | null>>>({}) // kolomId -> siswaId(uuid) -> nilai
   const [tambahKolomOpen, setTambahKolomOpen] = useState(false)
   const [labelKolomBaru, setLabelKolomBaru] = useState('')
+  const [editingKolomId, setEditingKolomId] = useState<string | null>(null)
+  const [editLabelValue, setEditLabelValue] = useState('')
   const [targetFormatif, setTargetFormatif] = useState(1)
   const [terapkanMsg, setTerapkanMsg] = useState('')
   const [guruId, setGuruId] = useState('')
@@ -277,6 +279,14 @@ export default function NilaiLegerPage() {
     setNilaiManualMap(prev => { const next = { ...prev }; delete next[kolomId]; return next })
   }
 
+  const handleSimpanEditKolom = async (kolomId: string) => {
+    const labelBaru = editLabelValue.trim()
+    if (!labelBaru) { setEditingKolomId(null); return }
+    await supabase.from('nilai_harian_kolom').update({ label: labelBaru }).eq('id', kolomId)
+    setKolomManual(prev => prev.map(k => k.id === kolomId ? { ...k, label: labelBaru } : k))
+    setEditingKolomId(null)
+  }
+
   const handleSimpanNilaiManual = async (kolomId: string, siswaNisn: string, nilai: number | null) => {
     const siswaId = userIdByNisn[siswaNisn]
     if (!siswaId) return
@@ -297,6 +307,18 @@ export default function NilaiLegerPage() {
     const semua = [...nilaiTugas, ...nilaiUh, ...nilaiManual]
     if (semua.length === 0) return null
     return Math.round((semua.reduce((a, b) => a + b, 0) / semua.length) * 100) / 100
+  }
+
+  const totalHarian = (nisn: string): number | null => {
+    const nilaiTugas = Object.values(nilaiTugasMap[nisn] ?? {}).filter((v): v is number => v !== null && v !== undefined)
+    const nilaiUh = Object.values(nilaiUhMap[nisn] ?? {}).filter((v): v is number => v !== null && v !== undefined)
+    const siswaId = userIdByNisn[nisn]
+    const nilaiManual = kolomManual
+      .map(k => siswaId ? nilaiManualMap[k.id]?.[siswaId] : null)
+      .filter((v): v is number => v !== null && v !== undefined)
+    const semua = [...nilaiTugas, ...nilaiUh, ...nilaiManual]
+    if (semua.length === 0) return null
+    return semua.reduce((a, b) => a + b, 0)
   }
 
   const handleTerapkanKeFormatif = () => {
@@ -684,10 +706,23 @@ export default function NilaiLegerPage() {
                         ))}
                         {kolomManual.map(k => (
                           <th key={k.id} className="px-3 py-3.5 text-center min-w-[120px]">
-                            <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-50 text-amber-700 text-xs font-semibold">
-                              ✏️ {k.label}
-                              <button onClick={() => handleHapusKolom(k.id)} className="text-amber-400 hover:text-red-500 font-bold leading-none" title="Hapus kolom">×</button>
-                            </span>
+                            {editingKolomId === k.id ? (
+                              <div className="flex items-center gap-1 justify-center">
+                                <input autoFocus value={editLabelValue} onChange={e => setEditLabelValue(e.target.value)}
+                                  onKeyDown={e => e.key === 'Enter' && handleSimpanEditKolom(k.id)}
+                                  className="w-20 px-1.5 py-1 border border-blue-300 rounded-lg text-xs font-normal text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                                <button onClick={() => handleSimpanEditKolom(k.id)} className="w-5 h-5 flex items-center justify-center rounded bg-emerald-500 text-white text-[10px] font-bold flex-shrink-0">✓</button>
+                                <button onClick={() => setEditingKolomId(null)} className="w-5 h-5 flex items-center justify-center rounded bg-gray-100 text-gray-400 text-[10px] flex-shrink-0">✕</button>
+                              </div>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-50 text-amber-700 text-xs font-semibold">
+                                <button onClick={() => { setEditingKolomId(k.id); setEditLabelValue(k.label) }}
+                                  className="hover:underline decoration-dotted" title="Klik buat edit nama">
+                                  ✏️ {k.label}
+                                </button>
+                                <button onClick={() => handleHapusKolom(k.id)} className="text-amber-400 hover:text-red-500 font-bold leading-none" title="Hapus kolom">×</button>
+                              </span>
+                            )}
                           </th>
                         ))}
                         <th className="px-3 py-3.5 text-center min-w-[130px]">
@@ -706,6 +741,7 @@ export default function NilaiLegerPage() {
                             </button>
                           )}
                         </th>
+                        <th className="px-4 py-3.5 text-center font-semibold text-gray-600 text-sm min-w-[80px]">Total</th>
                         <th className="px-4 py-3.5 text-center font-semibold text-gray-600 text-sm min-w-[90px]">Rata-rata</th>
                       </tr>
                     </thead>
@@ -737,6 +773,15 @@ export default function NilaiLegerPage() {
                             )
                           })}
                           <td className="px-3 py-3" />
+                          <td className="px-4 py-3 text-center">
+                            {totalHarian(s.nisn) !== null ? (
+                              <span className="inline-block px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-bold">
+                                {totalHarian(s.nisn)}
+                              </span>
+                            ) : (
+                              <span className="text-gray-300 text-sm">-</span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-center">
                             {rataHarian(s.nisn) !== null ? (
                               <span className="inline-block px-2.5 py-1 rounded-lg bg-[#1a3a6b]/10 text-[#1a3a6b] text-sm font-bold">
