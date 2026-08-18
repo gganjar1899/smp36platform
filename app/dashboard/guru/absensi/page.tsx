@@ -199,22 +199,22 @@ export default function AbsensiPage() {
     setSaving(true)
     setMessage(null)
 
-    const rows = siswaList.map(s => ({
-      siswa_id: s.id,
-      kelas_id: selectedKelas,
-      mapel_id: selectedMapel,
-      guru_id: guruId,
-      tanggal,
-      pertemuan_ke: pertemuanKe,
-      status: absensi[s.id] || 'H',
-    }))
+    const absensiPayload: Record<string, string> = {}
+    siswaList.forEach(s => { absensiPayload[s.id] = absensi[s.id] || 'H' })
 
-    const { error } = await supabase
-      .from('absensi_mapel')
-      .upsert(rows, { onConflict: 'siswa_id,kelas_id,mapel_id,tanggal,pertemuan_ke' })
+    const res = await fetch('/api/absensi/simpan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kelasId: selectedKelas, mapelId: selectedMapel,
+        tanggal, pertemuanKe, absensi: absensiPayload,
+      }),
+    })
+    const hasil = await res.json()
+    const error = !res.ok ? { message: hasil?.error ?? 'Gagal menyimpan.' } : null
 
     setMessage(error
-      ? { type: 'error',   text: `Gagal menyimpan: ${error.message}` }
+      ? { type: 'error',   text: error.message }
       : { type: 'success', text: 'Absensi berhasil disimpan!' }
     )
     setSaving(false)
