@@ -66,13 +66,14 @@ export default function NilaiLegerPage() {
   const [uhKolom, setUhKolom] = useState<{ id: string; judul: string }[]>([])
   const [nilaiTugasMap, setNilaiTugasMap] = useState<Record<string, Record<string, number | null>>>({})
   const [nilaiUhMap, setNilaiUhMap] = useState<Record<string, Record<string, number | null>>>({})
-  const [kolomManual, setKolomManual] = useState<{ id: string; label: string }[]>([])
+  const [kolomManual, setKolomManual] = useState<{ id: string; label: string; kelompok_formatif: number }[]>([])
   const [nilaiManualMap, setNilaiManualMap] = useState<Record<string, Record<string, number | null>>>({}) // kolomId -> siswaId(uuid) -> nilai
   const [tambahKolomOpen, setTambahKolomOpen] = useState(false)
   const [labelKolomBaru, setLabelKolomBaru] = useState('')
   const [editingKolomId, setEditingKolomId] = useState<string | null>(null)
   const [editLabelValue, setEditLabelValue] = useState('')
   const [targetFormatif, setTargetFormatif] = useState(1)
+  const [sumberNilaiLeger, setSumberNilaiLeger] = useState<'total' | 'rata'>('total')
   const [terapkanMsg, setTerapkanMsg] = useState('')
   const [guruId, setGuruId] = useState('')
 
@@ -216,15 +217,16 @@ export default function NilaiLegerPage() {
     setNilaiUhMap(uMap)
 
     // Kolom manual bebas (dibuat guru sendiri, mis. "Tugas 1", "Kuis Bab 2")
+    // Semua kelompok formatif diambil sekaligus, biar bisa gonta-ganti F1/F2/dst tanpa fetch ulang
     if (mapelRow) {
       const { data: kolomRows } = await supabase
         .from('nilai_harian_kolom')
-        .select('id, label')
+        .select('id, label, kelompok_formatif')
         .eq('guru_id', guruId).eq('kelas_id', kelasRow.id).eq('mapel_id', mapelRow.id)
         .eq('tahun_ajaran', '2026/2027')
         .order('urutan')
       const kolom = kolomRows || []
-      setKolomManual(kolom.map((k: any) => ({ id: k.id, label: k.label })))
+      setKolomManual(kolom.map((k: any) => ({ id: k.id, label: k.label, kelompok_formatif: k.kelompok_formatif ?? 1 })))
 
       if (kolom.length > 0) {
         const { data: nilaiRows } = await supabase
@@ -263,11 +265,12 @@ export default function NilaiLegerPage() {
 
     const { data, error } = await supabase.from('nilai_harian_kolom').insert({
       guru_id: guruId, kelas_id: kelasRow.data.id, mapel_id: mapelRow.data.id,
-      label: labelKolomBaru, urutan: kolomManual.length, tahun_ajaran: '2026/2027', semester: '1',
+      label: labelKolomBaru, urutan: kolomManualAktif.length, tahun_ajaran: '2026/2027', semester: '1',
+      kelompok_formatif: targetFormatif,
     }).select().single()
 
     if (error) { alert('Gagal menambah kolom: ' + error.message); return }
-    setKolomManual(prev => [...prev, { id: data.id, label: data.label }])
+    setKolomManual(prev => [...prev, { id: data.id, label: data.label, kelompok_formatif: data.kelompok_formatif ?? targetFormatif }])
     setLabelKolomBaru('')
     setTambahKolomOpen(false)
   }
@@ -297,11 +300,15 @@ export default function NilaiLegerPage() {
     )
   }
 
+  // Kolom manual yang sekelompok sama F yang lagi aktif — inilah yang bikin data F1
+  // dan F2 (dst) gak nyampur pas dihitung/di-push ke Leger
+  const kolomManualAktif = kolomManual.filter(k => k.kelompok_formatif === targetFormatif)
+
   const rataHarian = (nisn: string): number | null => {
     const nilaiTugas = Object.values(nilaiTugasMap[nisn] ?? {}).filter((v): v is number => v !== null && v !== undefined)
     const nilaiUh = Object.values(nilaiUhMap[nisn] ?? {}).filter((v): v is number => v !== null && v !== undefined)
     const siswaId = userIdByNisn[nisn]
-    const nilaiManual = kolomManual
+    const nilaiManual = kolomManualAktif
       .map(k => siswaId ? nilaiManualMap[k.id]?.[siswaId] : null)
       .filter((v): v is number => v !== null && v !== undefined)
     const semua = [...nilaiTugas, ...nilaiUh, ...nilaiManual]
@@ -313,7 +320,7 @@ export default function NilaiLegerPage() {
     const nilaiTugas = Object.values(nilaiTugasMap[nisn] ?? {}).filter((v): v is number => v !== null && v !== undefined)
     const nilaiUh = Object.values(nilaiUhMap[nisn] ?? {}).filter((v): v is number => v !== null && v !== undefined)
     const siswaId = userIdByNisn[nisn]
-    const nilaiManual = kolomManual
+    const nilaiManual = kolomManualAktif
       .map(k => siswaId ? nilaiManualMap[k.id]?.[siswaId] : null)
       .filter((v): v is number => v !== null && v !== undefined)
     const semua = [...nilaiTugas, ...nilaiUh, ...nilaiManual]
@@ -325,13 +332,14 @@ export default function NilaiLegerPage() {
     setNilaiMap(prev => {
       const next = { ...prev }
       siswaList.forEach(s => {
-        const rata = rataHarian(s.nisn)
-        if (rata === null) return
-        next[s.nis] = { ...next[s.nis], [`F${targetFormatif}`]: rata }
+        const nilai = sumberNilaiLeger === 'total' ? totalHarian(s.nisn) : rataHarian(s.nisn)
+        if (nilai === null) return
+        next[s.nis] = { ...next[s.nis], [`F${targetFormatif}`]: nilai }
       })
       return next
     })
-    setTerapkanMsg(`Rata-rata Nilai Harian diisikan ke kolom F${targetFormatif} di tab Leger Nilai. Cek & klik "Simpan Nilai" di tab Leger untuk menyimpan permanen.`)
+    const labelSumber = sumberNilaiLeger === 'total' ? 'Total' : 'Rata-rata'
+    setTerapkanMsg(`${labelSumber} Nilai Harian (kelompok F${targetFormatif}) diisikan ke kolom F${targetFormatif} di tab Leger Nilai. Cek & klik "Simpan Nilai" di tab Leger untuk menyimpan permanen.`)
     setActiveTab('leger')
   }
 
@@ -675,13 +683,22 @@ export default function NilaiLegerPage() {
                   { label: 'Siswa', value: siswaList.length, color: 'text-gray-600 bg-gray-50 border-gray-200' },
                   { label: 'Komponen Tugas', value: tugasKolom.length, color: 'text-blue-600 bg-blue-50 border-blue-200' },
                   { label: 'Ulangan Harian', value: uhKolom.length, color: 'text-purple-600 bg-purple-50 border-purple-200' },
-                  { label: 'Kolom Manual', value: kolomManual.length, color: 'text-amber-600 bg-amber-50 border-amber-200' },
+                  { label: 'Kolom Manual', value: kolomManualAktif.length, color: 'text-amber-600 bg-amber-50 border-amber-200' },
                 ].map(s => (
                   <div key={s.label} className={`rounded-xl border p-3.5 text-center ${s.color}`}>
                     <p className="text-2xl font-bold">{s.value}</p>
                     <p className="text-xs font-medium mt-0.5">{s.label}</p>
                   </div>
                 ))}
+              </div>
+
+              <div className="flex items-center gap-2 mb-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+                <span className="text-sm text-amber-700">📁 Lagi kerja di kelompok</span>
+                <select value={targetFormatif} onChange={e => setTargetFormatif(Number(e.target.value))}
+                  className="px-2.5 py-1 border border-amber-300 rounded-lg text-sm font-semibold text-amber-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400">
+                  {Array.from({ length: jmlFormatif }, (_, i) => i + 1).map(n => <option key={n} value={n}>F{n}</option>)}
+                </select>
+                <span className="text-xs text-amber-600">— kolom manual & Total/Rata-rata di bawah cuma buat kelompok ini, gak nyampur sama F lain</span>
               </div>
 
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4 shadow-sm">
@@ -704,7 +721,7 @@ export default function NilaiLegerPage() {
                             </span>
                           </th>
                         ))}
-                        {kolomManual.map(k => (
+                        {kolomManualAktif.map(k => (
                           <th key={k.id} className="px-3 py-3.5 text-center min-w-[120px]">
                             {editingKolomId === k.id ? (
                               <div className="flex items-center gap-1 justify-center">
@@ -759,7 +776,7 @@ export default function NilaiLegerPage() {
                               {nilaiUhMap[s.nisn]?.[u.id] ?? <span className="text-gray-300">-</span>}
                             </td>
                           ))}
-                          {kolomManual.map(k => {
+                          {kolomManualAktif.map(k => {
                             const siswaId = userIdByNisn[s.nisn]
                             const val = siswaId ? nilaiManualMap[k.id]?.[siswaId] : null
                             return (
@@ -805,12 +822,18 @@ export default function NilaiLegerPage() {
               )}
 
               <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center gap-3 shadow-sm">
-                <label className="text-sm text-gray-600">Terapkan rata-rata ini ke kolom</label>
-                <select value={targetFormatif} onChange={e => setTargetFormatif(Number(e.target.value))}
-                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  {Array.from({ length: jmlFormatif }, (_, i) => i + 1).map(n => <option key={n} value={n}>F{n}</option>)}
-                </select>
-                <label className="text-sm text-gray-600">di Leger Nilai</label>
+                <label className="text-sm text-gray-600">Kirim</label>
+                <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+                  <button onClick={() => setSumberNilaiLeger('total')}
+                    className={`px-3 py-2 text-sm font-medium transition ${sumberNilaiLeger === 'total' ? 'bg-[#1a3a6b] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                    Total
+                  </button>
+                  <button onClick={() => setSumberNilaiLeger('rata')}
+                    className={`px-3 py-2 text-sm font-medium transition border-l border-gray-200 ${sumberNilaiLeger === 'rata' ? 'bg-[#1a3a6b] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                    Rata-rata
+                  </button>
+                </div>
+                <span className="text-sm text-gray-600">kelompok <b className="text-amber-700">F{targetFormatif}</b> ke kolom <b className="text-[#1a3a6b]">F{targetFormatif}</b> di Leger Nilai</span>
                 <button onClick={handleTerapkanKeFormatif}
                   className="ml-auto px-5 py-2.5 bg-[#1a3a6b] hover:bg-[#15305a] text-white rounded-lg text-sm font-semibold transition">
                   Terapkan ke Leger →
