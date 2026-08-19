@@ -251,33 +251,29 @@ export default function NilaiLegerPage() {
 
   const handleTambahKolom = async () => {
     if (!labelKolomBaru.trim()) return
-    const kelasRow = await supabase.from('kelas').select('id, tingkat').eq('nama_rombel', kelas).maybeSingle()
-    if (!kelasRow.data) return
-    // Nama mapel di dropdown (nama lengkap, dari mata_pelajaran) diterjemahkan dulu ke nama
-    // singkat di tabel "mapel" buat 4 mapel yang formatnya beda (lihat NAMA_MAPEL_KE_TABEL_MAPEL).
-    const mapelRow = await supabase
-      .from('mapel')
-      .select('id')
-      .eq('nama', namaMapelUntukTabelMapel(mapel))
-      .eq('tingkat', kelasRow.data.tingkat)
-      .maybeSingle()
-    if (!mapelRow.data) { alert('Mapel tidak ditemukan untuk tingkat kelas ini. Hubungi admin untuk cek data mapel.'); return }
-
-    const { data, error } = await supabase.from('nilai_harian_kolom').insert({
-      guru_id: guruId, kelas_id: kelasRow.data.id, mapel_id: mapelRow.data.id,
-      label: labelKolomBaru, urutan: kolomManualAktif.length, tahun_ajaran: '2026/2027', semester: '1',
-      kelompok_formatif: targetFormatif,
-    }).select().single()
-
-    if (error) { alert('Gagal menambah kolom: ' + error.message); return }
-    setKolomManual(prev => [...prev, { id: data.id, label: data.label, kelompok_formatif: data.kelompok_formatif ?? targetFormatif }])
+    const res = await fetch('/api/nilai-harian/kolom', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create', kelasNama: kelas, mapelNama: mapel,
+        label: labelKolomBaru, kelompokFormatif: targetFormatif, urutan: kolomManualAktif.length,
+      }),
+    })
+    const hasil = await res.json()
+    if (!res.ok) { alert(hasil?.error ?? 'Gagal menambah kolom.'); return }
+    setKolomManual(prev => [...prev, { id: hasil.kolom.id, label: hasil.kolom.label, kelompok_formatif: hasil.kolom.kelompok_formatif ?? targetFormatif }])
     setLabelKolomBaru('')
     setTambahKolomOpen(false)
   }
 
   const handleHapusKolom = async (kolomId: string) => {
     if (!confirm('Hapus kolom ini beserta semua nilainya?')) return
-    await supabase.from('nilai_harian_kolom').delete().eq('id', kolomId)
+    const res = await fetch('/api/nilai-harian/kolom', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', kolomId }),
+    })
+    if (!res.ok) { const h = await res.json(); alert(h?.error ?? 'Gagal menghapus kolom.'); return }
     setKolomManual(prev => prev.filter(k => k.id !== kolomId))
     setNilaiManualMap(prev => { const next = { ...prev }; delete next[kolomId]; return next })
   }
@@ -285,7 +281,12 @@ export default function NilaiLegerPage() {
   const handleSimpanEditKolom = async (kolomId: string) => {
     const labelBaru = editLabelValue.trim()
     if (!labelBaru) { setEditingKolomId(null); return }
-    await supabase.from('nilai_harian_kolom').update({ label: labelBaru }).eq('id', kolomId)
+    const res = await fetch('/api/nilai-harian/kolom', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'rename', kolomId, label: labelBaru }),
+    })
+    if (!res.ok) { const h = await res.json(); alert(h?.error ?? 'Gagal menyimpan nama kolom.'); return }
     setKolomManual(prev => prev.map(k => k.id === kolomId ? { ...k, label: labelBaru } : k))
     setEditingKolomId(null)
   }
@@ -294,10 +295,11 @@ export default function NilaiLegerPage() {
     const siswaId = userIdByNisn[siswaNisn]
     if (!siswaId) return
     setNilaiManualMap(prev => ({ ...prev, [kolomId]: { ...prev[kolomId], [siswaId]: nilai } }))
-    await supabase.from('nilai_harian_nilai').upsert(
-      { kolom_id: kolomId, siswa_id: siswaId, nilai, updated_at: new Date().toISOString() },
-      { onConflict: 'kolom_id,siswa_id' }
-    )
+    await fetch('/api/nilai-harian/nilai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kolomId, siswaId, nilai }),
+    })
   }
 
   // Kolom manual yang sekelompok sama F yang lagi aktif — inilah yang bikin data F1
