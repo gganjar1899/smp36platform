@@ -87,23 +87,28 @@ export default function RekapAbsensiGuruPage() {
       .then(({ data }) => { if (data?.nip) setGuruNip(data.nip) })
   }, [guruId])
 
-  // Ambil kelas & mapel yang diampu guru ini
+  // Ambil kelas & mapel yang diampu guru ini, PLUS kelas yang guru ini jadi wali kelasnya
   useEffect(() => {
     if (!guruId) return
-    supabase
-      .from('guru_mapel')
-      .select('kelas_id, kelas:kelas_id(id, nama_rombel), mapel_id, mata_pelajaran:mapel_id(id, nama_mapel)')
-      .eq('guru_id', guruId)
-      .eq('tahun_ajaran', '2026/2027')
-      .then(({ data }) => {
-        if (!data) return
-        const kelas = Array.from(new Map(data.map((d: any) => [d.kelas_id, d.kelas])).values()).filter(Boolean) as KelasOpt[]
-        const mapel = Array.from(new Map(data.map((d: any) => [d.mapel_id, d.mata_pelajaran])).values()).filter(Boolean) as MapelOpt[]
-        setKelasList(kelas)
-        setMapelList(mapel)
-        if (kelas[0]) setSelectedKelas(kelas[0].id)
-        if (mapel[0]) setSelectedMapel(mapel[0].id)
-      })
+    Promise.all([
+      supabase.from('guru_mapel')
+        .select('kelas_id, kelas:kelas_id(id, nama_rombel), mapel_id, mata_pelajaran:mapel_id(id, nama_mapel)')
+        .eq('guru_id', guruId).eq('tahun_ajaran', '2026/2027'),
+      supabase.from('kelas').select('id, nama_rombel').eq('wali_kelas_id', guruId),
+    ]).then(([{ data: mengajar }, { data: walasKelas }]) => {
+      const kelasMap = new Map<string, KelasOpt>()
+      ;(mengajar || []).forEach((d: any) => { if (d.kelas) kelasMap.set(d.kelas.id, d.kelas) })
+      ;(walasKelas || []).forEach((k: any) => kelasMap.set(k.id, { id: k.id, nama_rombel: k.nama_rombel }))
+      const kelas = Array.from(kelasMap.values()).sort((a, b) => a.nama_rombel.localeCompare(b.nama_rombel))
+      const mapel = Array.from(new Map((mengajar || []).map((d: any) => [d.mapel_id, d.mata_pelajaran])).values()).filter(Boolean) as MapelOpt[]
+      setKelasList(kelas)
+      setMapelList(mapel)
+      // Kalau guru ini wali kelas, prioritaskan kelas perwaliannya sebagai default
+      const kelasWalas = (walasKelas || [])[0]
+      if (kelasWalas) setSelectedKelas(kelasWalas.id)
+      else if (kelas[0]) setSelectedKelas(kelas[0].id)
+      setSelectedMapel('semua') // default: rekap gabungan semua mapel, bukan satu mapel doang
+    })
   }, [guruId])
 
   const getNamaBulan = (val: string) => BULAN_OPTIONS.find(b => b.val === val)?.label || ''
@@ -112,7 +117,7 @@ export default function RekapAbsensiGuruPage() {
     : `Semester ${semester} Tahun ${tahun}/${tahun + 1}`
 
   const fetchRekap = useCallback(async () => {
-    if (!selectedKelas || !selectedMapel) { setRekap([]); return }
+    if (!selectedKelas) { setRekap([]); return }
     setLoading(true)
 
     let mulai = '', selesai = ''
@@ -137,13 +142,14 @@ export default function RekapAbsensiGuruPage() {
       .filter(Boolean)
       .sort((a: any, b: any) => a.nama.localeCompare(b.nama))
 
-    const { data: absenData } = await supabase
+    let query = supabase
       .from('absensi_mapel')
       .select('siswa_id, status, tanggal')
       .eq('kelas_id', selectedKelas)
-      .eq('mapel_id', selectedMapel)
       .gte('tanggal', mulai)
       .lte('tanggal', selesai)
+    if (selectedMapel !== 'semua') query = query.eq('mapel_id', selectedMapel)
+    const { data: absenData } = await query
 
     const map: Record<string, RekapSiswa> = {}
     ;(siswaData || []).forEach((s: any) => {
@@ -167,7 +173,7 @@ export default function RekapAbsensiGuruPage() {
   useEffect(() => { fetchRekap() }, [fetchRekap])
 
   const fetchMatrix = useCallback(async () => {
-    if (!selectedKelas || !selectedMapel) { setMatrix([]); setPertemuanList([]); return }
+    if (!selectedKelas || !selectedMapel || selectedMapel === 'semua') { setMatrix([]); setPertemuanList([]); return }
     setLoading(true)
 
     let mulai = '', selesai = ''
@@ -241,7 +247,7 @@ export default function RekapAbsensiGuruPage() {
   const rataKehadiran = rekap.length > 0 ? Math.round(rekap.reduce((a, r) => a + r.persen, 0) / rekap.length) : 0
 
   const namaKelas = kelasList.find(k => k.id === selectedKelas)?.nama_rombel ?? ''
-  const namaMapel = mapelList.find(m => m.id === selectedMapel)?.nama_mapel ?? ''
+  const namaMapel = selectedMapel === 'semua' ? 'Semua Mapel (Gabungan)' : (mapelList.find(m => m.id === selectedMapel)?.nama_mapel ?? '')
 
   const handleExportExcel = () => {
     const wb = XLSX.utils.book_new()
@@ -429,6 +435,7 @@ export default function RekapAbsensiGuruPage() {
             <label className="text-xs font-semibold text-gray-500 mb-1 block">Mata Pelajaran</label>
             <select value={selectedMapel} onChange={e => setSelectedMapel(e.target.value)}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a6b]/20 focus:border-[#1a3a6b]">
+              <option value="semua">📊 Semua Mapel (gabungan)</option>
               {mapelList.map(m => <option key={m.id} value={m.id}>{m.nama_mapel}</option>)}
             </select>
           </div>
@@ -505,9 +512,9 @@ export default function RekapAbsensiGuruPage() {
             <div className="w-8 h-8 border-2 border-[#1a3a6b] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
             Memuat rekap...
           </div>
-        ) : !selectedKelas || !selectedMapel ? (
+        ) : !selectedKelas ? (
           <div className="p-12 text-center text-gray-400 text-sm">
-            Pilih kelas dan mata pelajaran untuk melihat rekap.
+            Pilih kelas untuk melihat rekap.
           </div>
         ) : rekap.length === 0 ? (
           <div className="p-12 text-center text-gray-400">
@@ -580,9 +587,11 @@ export default function RekapAbsensiGuruPage() {
             <div className="w-8 h-8 border-2 border-[#1a3a6b] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
             Memuat data...
           </div>
-        ) : !selectedKelas || !selectedMapel ? (
+        ) : !selectedKelas || selectedMapel === 'semua' ? (
           <div className="p-12 text-center text-gray-400 text-sm">
-            Pilih kelas dan mata pelajaran untuk melihat tabel.
+            {selectedMapel === 'semua'
+              ? 'Tampilan per-pertemuan cuma bisa buat 1 mata pelajaran spesifik (nomor pertemuan tiap mapel beda-beda). Pilih salah satu mapel di atas, atau pakai tampilan Ringkasan buat lihat rekap gabungan semua mapel.'
+              : 'Pilih kelas dan mata pelajaran untuk melihat tabel.'}
           </div>
         ) : pertemuanList.length === 0 ? (
           <div className="p-12 text-center text-gray-400">
