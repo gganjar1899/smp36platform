@@ -32,7 +32,7 @@ export default function KelolaTugasPage() {
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
   const [form, setForm] = useState({
-    judul: '', deskripsi: '', kelasId: '', mapelId: '', deadline: '', poin: 100, file: null as File | null,
+    judul: '', deskripsi: '', kelasIds: [] as string[], mapelId: '', deadline: '', poin: 100, file: null as File | null,
   })
 
   // Detail pengumpulan
@@ -64,7 +64,7 @@ export default function KelolaTugasPage() {
           const kelas = [...new Map(data.map((d: any) => [d.kelas?.id, { id: d.kelas?.id, nama: d.kelas?.nama_rombel }])).values()].filter(k => k.id)
           setMapelList(mapels as Opsi[])
           setKelasList(kelas as Opsi[])
-          setForm(f => ({ ...f, kelasId: kelas[0]?.id ?? '', mapelId: mapels[0]?.id ?? '' }))
+          setForm(f => ({ ...f, kelasIds: kelas[0] ? [kelas[0].id] : [], mapelId: mapels[0]?.id ?? '' }))
         }
       } catch (err) {
         console.error('[guru/tugas] gagal ambil identitas:', err)
@@ -91,8 +91,8 @@ export default function KelolaTugasPage() {
   useEffect(() => { fetchTugas() }, [fetchTugas])
 
   async function handleSimpan() {
-    if (!form.judul || !form.kelasId || !form.mapelId || !form.deadline) {
-      setMsg('Judul, kelas, mapel, dan deadline wajib diisi')
+    if (!form.judul || form.kelasIds.length === 0 || !form.mapelId || !form.deadline) {
+      setMsg('Judul, minimal 1 kelas, mapel, dan deadline wajib diisi')
       return
     }
     setSaving(true)
@@ -107,31 +107,34 @@ export default function KelolaTugasPage() {
         fileLampiran = [{ nama: form.file.name, url: urlData.publicUrl }]
       }
 
-      const { data: tugasBaru, error: insertErr } = await supabase.from('tugas').insert({
-        judul: form.judul, deskripsi: form.deskripsi || null,
-        kelas_id: form.kelasId, mapel_id: form.mapelId,
-        deadline: new Date(form.deadline).toISOString(),
-        poin: form.poin, dibuat_oleh: guruId,
-        file_lampiran: fileLampiran,
-      }).select().single()
-      if (insertErr) throw new Error(insertErr.message)
+      // Satu tugas dibikin per kelas yang dicentang — sama persis isinya, cuma kelas_id beda
+      for (const kelasId of form.kelasIds) {
+        const { error: insertErr } = await supabase.from('tugas').insert({
+          judul: form.judul, deskripsi: form.deskripsi || null,
+          kelas_id: kelasId, mapel_id: form.mapelId,
+          deadline: new Date(form.deadline).toISOString(),
+          poin: form.poin, dibuat_oleh: guruId,
+          file_lampiran: fileLampiran,
+        })
+        if (insertErr) throw new Error(insertErr.message)
 
-      // Kirim notifikasi ke semua siswa di kelas tersebut
-      const { data: siswaKelas } = await supabase
-        .from('siswa_kelas').select('siswa_id')
-        .eq('kelas_id', form.kelasId).eq('tahun_ajaran', '2026/2027').eq('status', 'aktif')
-      if (siswaKelas && siswaKelas.length > 0) {
-        await supabase.from('notifikasi').insert(siswaKelas.map((s: any) => ({
-          user_id: s.siswa_id,
-          judul: 'Tugas baru',
-          pesan: `Ada tugas baru: "${form.judul}"`,
-          link: '/dashboard/siswa/tugas',
-        })))
+        // Kirim notifikasi ke semua siswa di kelas tersebut
+        const { data: siswaKelas } = await supabase
+          .from('siswa_kelas').select('siswa_id')
+          .eq('kelas_id', kelasId).eq('tahun_ajaran', '2026/2027').eq('status', 'aktif')
+        if (siswaKelas && siswaKelas.length > 0) {
+          await supabase.from('notifikasi').insert(siswaKelas.map((s: any) => ({
+            user_id: s.siswa_id,
+            judul: 'Tugas baru',
+            pesan: `Ada tugas baru: "${form.judul}"`,
+            link: '/dashboard/siswa/tugas',
+          })))
+        }
       }
 
       setForm(f => ({ ...f, judul: '', deskripsi: '', file: null }))
       setShowForm(false)
-      setMsg('Tugas berhasil dibuat!')
+      setMsg(form.kelasIds.length > 1 ? `Tugas berhasil dibuat untuk ${form.kelasIds.length} kelas!` : 'Tugas berhasil dibuat!')
       fetchTugas()
     } catch (err: any) {
       setMsg('Gagal menyimpan: ' + err.message)
@@ -372,11 +375,32 @@ export default function KelolaTugasPage() {
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Kelas</label>
-              <select value={form.kelasId} onChange={e => setForm(f => ({ ...f, kelasId: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm">
-                {kelasList.map(k => <option key={k.id} value={k.id}>{k.nama}</option>)}
-              </select>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-medium text-gray-600">Kelas ({form.kelasIds.length} dipilih)</label>
+                <button type="button"
+                  onClick={() => setForm(f => ({ ...f, kelasIds: f.kelasIds.length === kelasList.length ? [] : kelasList.map(k => k.id) }))}
+                  className="text-xs text-[#1a6b3a] hover:underline">
+                  {form.kelasIds.length === kelasList.length ? 'Kosongkan' : 'Pilih semua'}
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5 border border-gray-200 rounded-lg p-2 max-h-24 overflow-y-auto">
+                {kelasList.map(k => {
+                  const dipilih = form.kelasIds.includes(k.id)
+                  return (
+                    <button key={k.id} type="button"
+                      onClick={() => setForm(f => ({
+                        ...f,
+                        kelasIds: dipilih ? f.kelasIds.filter(id => id !== k.id) : [...f.kelasIds, k.id],
+                      }))}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                        dipilih ? 'bg-[#1a6b3a] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      }`}>
+                      {k.nama}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">Centang beberapa kelas buat kasih tugas yang sama sekaligus (satu perintah, semua kelas).</p>
             </div>
           </div>
           <div>
