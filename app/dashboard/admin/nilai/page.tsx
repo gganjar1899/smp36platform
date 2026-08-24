@@ -17,12 +17,12 @@ type NilaiMap = { [siswaId: string]: { [key: string]: number | null } }
 type KelasOpt = { id: string; nama_rombel: string; tingkat: number }
 type MapelOpt = { id: string; nama_mapel: string }
 
-const KKM = 70
+const KKM = 75
 const getKualifikasi = (nilai: number | null) => {
   if (nilai === null) return { label: '-', color: 'text-gray-400' }
   if (nilai >= 90) return { label: 'A', color: 'text-green-600' }
   if (nilai >= 80) return { label: 'B', color: 'text-blue-600' }
-  if (nilai >= 70) return { label: 'C', color: 'text-yellow-600' }
+  if (nilai >= 75) return { label: 'C', color: 'text-yellow-600' }
   return { label: 'D', color: 'text-red-600' }
 }
 

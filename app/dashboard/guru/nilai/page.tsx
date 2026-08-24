@@ -31,12 +31,12 @@ function namaMapelUntukTabelMapel(namaDropdown: string) {
 type Siswa = { id: string; nis: string; nisn: string; nama: string; jenis_kelamin: string }
 type NilaiMap = { [nis: string]: { [key: string]: number | null } }
 
-const KKM = 70
+const KKM = 75
 const getKualifikasi = (nilai: number | null) => {
   if (!nilai) return { label: '-', color: 'text-gray-400' }
   if (nilai >= 90) return { label: 'A', color: 'text-green-600' }
   if (nilai >= 80) return { label: 'B', color: 'text-blue-600' }
-  if (nilai >= 70) return { label: 'C', color: 'text-yellow-600' }
+  if (nilai >= 75) return { label: 'C', color: 'text-yellow-600' }
   return { label: 'D', color: 'text-red-600' }
 }
 
