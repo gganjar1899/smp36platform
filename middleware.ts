@@ -12,6 +12,14 @@ const PUBLIC_PATHS = [
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
+  // Semua route API ngurus autentikasi & otorisasinya sendiri (baca cookie, cek role,
+  // balikin 401/403 dalam bentuk JSON) — jangan di-redirect di sini. Kalau di-redirect,
+  // fetch() dari browser ngikutin redirect itu dan berakhir di halaman dashboard biasa
+  // (yang nolak POST dengan 405), bukan JSON yang diharapkan sama kode di sisi client.
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next()
+  }
+
   if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
     return NextResponse.next()
   }
