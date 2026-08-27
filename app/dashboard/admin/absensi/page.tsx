@@ -19,6 +19,14 @@ type RekapSiswa = {
   total: number
   persen: number
 }
+type RekapKelas = {
+  kelasId: string
+  namaKelas: string
+  jumlahSiswa: number
+  H: number; S: number; I: number; A: number
+  total: number
+  persen: number
+}
 type KelasOpt = { id: string; nama_rombel: string; tingkat: number; wali_nama: string | null; wali_nip: string | null }
 type MapelOpt = { id: string; nama_mapel: string }
 
@@ -34,15 +42,16 @@ const BULAN_OPTIONS = [
 export default function RekapAbsensiAdminPage() {
   const [kelasList, setKelasList] = useState<KelasOpt[]>([])
   const [mapelList, setMapelList] = useState<MapelOpt[]>([])
-  const [kelasId, setKelasId] = useState('')
-  const [jenis, setJenis] = useState<'Harian' | 'Mapel'>('Harian')
-  const [mapelId, setMapelId] = useState('')
+  const [kelasId, setKelasId] = useState('semua')
+  const [jenis, setJenis] = useState<'Harian' | 'Mapel'>('Mapel')
+  const [mapelId, setMapelId] = useState('semua')
   const [mode, setMode] = useState<'bulan' | 'semester'>('bulan')
   const [bulan, setBulan] = useState(() => String(new Date().getMonth() + 1).padStart(2, '0'))
   const [tahun] = useState(new Date().getFullYear())
   const [semester, setSemester] = useState<'1' | '2'>('1')
 
   const [rekap, setRekap] = useState<RekapSiswa[]>([])
+  const [rekapKelas, setRekapKelas] = useState<RekapKelas[]>([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -55,13 +64,9 @@ export default function RekapAbsensiAdminPage() {
           wali_nama: k.wali?.nama ?? null, wali_nip: k.wali?.nip ?? null,
         }))
         setKelasList(list)
-        if (list[0]) setKelasId(list[0].id)
       })
     supabase.from('mata_pelajaran').select('id, nama_mapel').order('nama_mapel')
-      .then(({ data }) => {
-        setMapelList(data || [])
-        if (data && data[0]) setMapelId(data[0].id)
-      })
+      .then(({ data }) => setMapelList(data || []))
   }, [])
 
   const getNamaBulan = (val: string) => BULAN_OPTIONS.find(b => b.val === val)?.label || ''
@@ -83,6 +88,43 @@ export default function RekapAbsensiAdminPage() {
       else { mulai = `${tahun + 1}-01-01`; selesai = `${tahun + 1}-06-30` }
     }
 
+    // ====== MODE: SEMUA KELAS — ringkasan satu baris per kelas, sekolah-wide ======
+    if (kelasId === 'semua') {
+      const { data: sk } = await supabase
+        .from('siswa_kelas')
+        .select('kelas_id, siswa_id')
+        .in('kelas_id', kelasList.map(k => k.id))
+        .eq('tahun_ajaran', '2026/2027').eq('status', 'aktif')
+
+      const jumlahPerKelas: Record<string, number> = {}
+      ;(sk || []).forEach((r: any) => { jumlahPerKelas[r.kelas_id] = (jumlahPerKelas[r.kelas_id] || 0) + 1 })
+
+      let query = supabase.from(jenis === 'Harian' ? 'absensi_harian' : 'absensi_mapel')
+        .select('kelas_id, status, tanggal')
+        .in('kelas_id', kelasList.map(k => k.id))
+        .gte('tanggal', mulai).lte('tanggal', selesai)
+      if (jenis === 'Mapel' && mapelId !== 'semua') query = query.eq('mapel_id', mapelId)
+      const { data: absenData } = await query
+
+      const map: Record<string, RekapKelas> = {}
+      kelasList.forEach(k => {
+        map[k.id] = { kelasId: k.id, namaKelas: k.nama_rombel, jumlahSiswa: jumlahPerKelas[k.id] || 0, H: 0, S: 0, I: 0, A: 0, total: 0, persen: 0 }
+      })
+      ;(absenData || []).forEach((a: any) => {
+        const r = map[a.kelas_id]
+        if (!r) return
+        if (['H', 'S', 'I', 'A'].includes(a.status)) (r as any)[a.status]++
+        r.total++
+      })
+
+      const result = Object.values(map).map(r => ({ ...r, persen: r.total > 0 ? Math.round((r.H / r.total) * 100) : 0 }))
+      setRekapKelas(result)
+      setRekap([])
+      setLoading(false)
+      return
+    }
+
+    // ====== MODE: 1 KELAS SPESIFIK — detail per siswa ======
     const { data: sk } = await supabase
       .from('siswa_kelas')
       .select('siswa_id, siswa:siswa_id(id, nama, nisn)')
@@ -95,9 +137,11 @@ export default function RekapAbsensiAdminPage() {
         .eq('kelas_id', kelasId).gte('tanggal', mulai).lte('tanggal', selesai)
       absenData = data || []
     } else {
-      const { data } = await supabase.from('absensi_mapel')
+      let query = supabase.from('absensi_mapel')
         .select('siswa_id, status, tanggal')
-        .eq('kelas_id', kelasId).eq('mapel_id', mapelId).gte('tanggal', mulai).lte('tanggal', selesai)
+        .eq('kelas_id', kelasId).gte('tanggal', mulai).lte('tanggal', selesai)
+      if (mapelId !== 'semua') query = query.eq('mapel_id', mapelId)
+      const { data } = await query
       absenData = data || []
     }
 
@@ -118,27 +162,62 @@ export default function RekapAbsensiAdminPage() {
     })).sort((a, b) => a.nama.localeCompare(b.nama))
 
     setRekap(result)
+    setRekapKelas([])
     setLoading(false)
-  }, [kelasId, jenis, mapelId, mode, bulan, tahun, semester])
+  }, [kelasId, jenis, mapelId, mode, bulan, tahun, semester, kelasList])
 
   useEffect(() => { fetchRekap() }, [fetchRekap])
 
-  const totalH = rekap.reduce((a, r) => a + r.H, 0)
-  const totalS = rekap.reduce((a, r) => a + r.S, 0)
-  const totalI = rekap.reduce((a, r) => a + r.I, 0)
-  const totalA = rekap.reduce((a, r) => a + r.A, 0)
-  const rataKehadiran = rekap.length > 0 ? Math.round(rekap.reduce((a, r) => a + r.persen, 0) / rekap.length) : 0
+  const sumberTotal = kelasId === 'semua' ? rekapKelas : rekap
+  const totalH = sumberTotal.reduce((a, r) => a + r.H, 0)
+  const totalS = sumberTotal.reduce((a, r) => a + r.S, 0)
+  const totalI = sumberTotal.reduce((a, r) => a + r.I, 0)
+  const totalA = sumberTotal.reduce((a, r) => a + r.A, 0)
+  const rataKehadiran = sumberTotal.length > 0 ? Math.round(sumberTotal.reduce((a, r) => a + r.persen, 0) / sumberTotal.length) : 0
 
   const kelasAktif = kelasList.find(k => k.id === kelasId)
   const namaKelas = kelasAktif?.nama_rombel ?? ''
   const waliNama = kelasAktif?.wali_nama ?? '(belum ditentukan)'
   const waliNip = kelasAktif?.wali_nip ?? '-'
-  const namaMapel = mapelList.find(m => m.id === mapelId)?.nama_mapel ?? ''
+  const namaMapel = mapelId === 'semua' ? 'Semua Mapel (Gabungan)' : (mapelList.find(m => m.id === mapelId)?.nama_mapel ?? '')
 
   const handleExportExcel = () => {
     const wb = XLSX.utils.book_new()
     const periode = getPeriodeLabel()
     const today = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+
+    if (kelasId === 'semua') {
+      const headerRows = [
+        ['REKAP ABSENSI SISWA — RINGKASAN SEKOLAH'],
+        ['SMP NEGERI 36 BANDUNG'],
+        ['Jl. Caringin Babakan Ciparay Bandung | Telp. (022) 6078507'],
+        [''],
+        ['Jenis Absensi', ':', jenis === 'Harian' ? 'Harian' : `Per Mapel (${namaMapel})`],
+        ['Periode', ':', periode],
+        [''],
+      ]
+      const tableHeader = ['No', 'Kelas', 'Jml Siswa', 'Hadir', 'Sakit', 'Izin', 'Alpa', '% Kehadiran', 'Ket.']
+      const tableData = rekapKelas.map((r, i) => [
+        i + 1, r.namaKelas, r.jumlahSiswa, r.H, r.S, r.I, r.A, r.persen + '%',
+        r.persen >= 80 ? 'Baik' : r.persen >= 70 ? 'Cukup' : 'Kurang',
+      ])
+      const totalRow = ['', 'TOTAL SEKOLAH', rekapKelas.reduce((a, r) => a + r.jumlahSiswa, 0), totalH, totalS, totalI, totalA, rataKehadiran + '%', '']
+      const ttdRows = [
+        [''],
+        ['', '', '', '', '', 'Bandung, ' + today],
+        ['', '', '', '', '', 'Mengetahui,'],
+        ['', '', '', '', '', 'Kepala Sekolah,'],
+        [''], [''], [''],
+        ['', '', '', '', '', KEPSEK_NAMA],
+        ['', '', '', '', '', 'NIP. ' + KEPSEK_NIP],
+      ]
+      const allRows = [...headerRows, tableHeader, ...tableData, totalRow, ...ttdRows]
+      const ws = XLSX.utils.aoa_to_sheet(allRows)
+      ws['!cols'] = [{ wch: 4 }, { wch: 14 }, { wch: 10 }, { wch: 7 }, { wch: 7 }, { wch: 7 }, { wch: 7 }, { wch: 12 }, { wch: 10 }]
+      XLSX.utils.book_append_sheet(wb, ws, 'Ringkasan Sekolah')
+      XLSX.writeFile(wb, `Rekap-Absensi-SemuaKelas-${periode.replace(/ /g, '-')}.xlsx`)
+      return
+    }
 
     const headerRows = [
       ['REKAP ABSENSI SISWA'],
@@ -191,7 +270,7 @@ export default function RekapAbsensiAdminPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Rekap Absensi</h1>
           <p className="text-gray-500 text-sm mt-1">Rekap kehadiran siswa semua kelas 7, 8, dan 9 — per bulan & semester</p>
         </div>
-        {rekap.length > 0 && (
+        {(rekap.length > 0 || rekapKelas.length > 0) && (
           <button onClick={handleExportExcel}
             className="flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition w-full sm:w-auto">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -209,6 +288,7 @@ export default function RekapAbsensiAdminPage() {
             <label className="text-xs font-semibold text-gray-500 mb-1 block">Kelas</label>
             <select value={kelasId} onChange={e => setKelasId(e.target.value)}
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="semua">🏫 Semua Kelas (ringkasan sekolah)</option>
               {[7, 8, 9].map(t => (
                 <optgroup key={t} label={`Kelas ${t}`}>
                   {kelasList.filter(k => k.tingkat === t).map(k => (
@@ -231,6 +311,7 @@ export default function RekapAbsensiAdminPage() {
               <label className="text-xs font-semibold text-gray-500 mb-1 block">Mata Pelajaran</label>
               <select value={mapelId} onChange={e => setMapelId(e.target.value)}
                 className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="semua">📊 Semua Mapel (gabungan)</option>
                 {mapelList.map(m => <option key={m.id} value={m.id}>{m.nama_mapel}</option>)}
               </select>
             </div>
@@ -298,6 +379,74 @@ export default function RekapAbsensiAdminPage() {
             <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
             Memuat rekap...
           </div>
+        ) : kelasId === 'semua' ? (
+          rekapKelas.length === 0 ? (
+            <div className="p-12 text-center text-gray-400">
+              <p className="font-medium">Belum ada data absensi pada periode ini</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-[#1a3a6b] text-white">
+                    <th className="px-4 py-3 text-left font-semibold w-8">No</th>
+                    <th className="px-4 py-3 text-left font-semibold">Kelas</th>
+                    <th className="px-4 py-3 text-center font-semibold">Jml Siswa</th>
+                    <th className="px-4 py-3 text-center font-semibold">Hadir</th>
+                    <th className="px-4 py-3 text-center font-semibold">Sakit</th>
+                    <th className="px-4 py-3 text-center font-semibold">Izin</th>
+                    <th className="px-4 py-3 text-center font-semibold">Alpa</th>
+                    <th className="px-4 py-3 text-center font-semibold">% Hadir</th>
+                    <th className="px-4 py-3 text-center font-semibold">Ket.</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {rekapKelas.map((r, i) => (
+                    <tr key={r.kelasId} className={`hover:bg-gray-50/50 transition cursor-pointer ${r.persen < 70 ? 'bg-red-50/40' : ''}`}
+                      onClick={() => setKelasId(r.kelasId)} title="Klik buat lihat detail per siswa">
+                      <td className="px-4 py-3 text-gray-400 text-xs">{i + 1}</td>
+                      <td className="px-4 py-3 font-medium text-gray-800">{r.namaKelas}</td>
+                      <td className="px-4 py-3 text-center text-gray-600">{r.jumlahSiswa}</td>
+                      <td className="px-4 py-3 text-center font-semibold text-green-600">{r.H}</td>
+                      <td className="px-4 py-3 text-center font-semibold text-yellow-600">{r.S || '-'}</td>
+                      <td className="px-4 py-3 text-center font-semibold text-blue-600">{r.I || '-'}</td>
+                      <td className="px-4 py-3 text-center font-semibold text-red-600">{r.A || '-'}</td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="w-14 bg-gray-100 rounded-full h-1.5">
+                            <div className={`h-1.5 rounded-full ${r.persen >= 80 ? 'bg-green-500' : r.persen >= 70 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                              style={{ width: `${r.persen}%` }} />
+                          </div>
+                          <span className={`text-xs font-semibold ${r.persen >= 80 ? 'text-green-600' : r.persen >= 70 ? 'text-yellow-600' : 'text-red-600'}`}>
+                            {r.persen}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded
+                          ${r.persen >= 80 ? 'bg-green-50 text-green-700' : r.persen >= 70 ? 'bg-yellow-50 text-yellow-700' : 'bg-red-50 text-red-700'}`}>
+                          {r.persen >= 80 ? 'Baik' : r.persen >= 70 ? 'Cukup' : 'Kurang'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-50 border-t-2 border-gray-200 font-bold">
+                    <td colSpan={2} className="px-4 py-3 text-gray-700">TOTAL SEKOLAH</td>
+                    <td className="px-4 py-3 text-center text-gray-700">{rekapKelas.reduce((a, r) => a + r.jumlahSiswa, 0)}</td>
+                    <td className="px-4 py-3 text-center text-green-600">{totalH}</td>
+                    <td className="px-4 py-3 text-center text-yellow-600">{totalS}</td>
+                    <td className="px-4 py-3 text-center text-blue-600">{totalI}</td>
+                    <td className="px-4 py-3 text-center text-red-600">{totalA}</td>
+                    <td className="px-4 py-3 text-center text-blue-600">{rataKehadiran}%</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+              <p className="text-xs text-gray-400 px-4 py-2 bg-gray-50 border-t border-gray-100">Klik salah satu baris kelas buat lihat rincian per siswa.</p>
+            </div>
+          )
         ) : rekap.length === 0 ? (
           <div className="p-12 text-center text-gray-400">
             <svg className="w-12 h-12 mx-auto mb-3 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
