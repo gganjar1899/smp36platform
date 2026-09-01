@@ -19,6 +19,8 @@ type UjianDetail = {
   acak_soal: boolean
   token: string
   maks_peringatan: number
+  tanggal_mulai: string | null
+  tanggal_selesai: string | null
   mapel?: { nama_mapel: string }
 }
 
@@ -175,7 +177,7 @@ export default function KerjakanUjianPage() {
 
       const { data: u, error: uErr } = await supabase
         .from('ujian')
-        .select('id, judul, jenis_ujian, durasi_menit, status, kelas_id, acak_soal, token, maks_peringatan, mapel:mapel_id(nama_mapel)')
+        .select('id, judul, jenis_ujian, durasi_menit, status, kelas_id, acak_soal, token, maks_peringatan, tanggal_mulai, tanggal_selesai, mapel:mapel_id(nama_mapel)')
         .eq('id', ujianId)
         .single()
 
@@ -209,6 +211,22 @@ export default function KerjakanUjianPage() {
         .eq('ujian_id', ujianId)
         .eq('siswa_id', me.siswa.id)
         .maybeSingle()
+
+      // Jendela waktu cuma ngunci yang MULAI BARU — siswa yang udah pernah mulai (sesi ada)
+      // tetep boleh lanjut walau jadwalnya udah lewat, biar gak keblokir di tengah ngerjain.
+      if (!sesiExisting && (detail.tanggal_mulai || detail.tanggal_selesai)) {
+        const sekarang = new Date()
+        if (detail.tanggal_mulai && sekarang < new Date(detail.tanggal_mulai)) {
+          setErrorMsg(`Ujian ini belum dimulai. Jadwalnya dibuka pada ${new Date(detail.tanggal_mulai).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}.`)
+          setStep('error')
+          return
+        }
+        if (detail.tanggal_selesai && sekarang > new Date(detail.tanggal_selesai)) {
+          setErrorMsg('Waktu untuk memulai ujian ini sudah berakhir. Hubungi gurumu kalau kamu butuh ujian susulan.')
+          setStep('error')
+          return
+        }
+      }
 
       if (!sesiExisting) {
         setStep('intro')
