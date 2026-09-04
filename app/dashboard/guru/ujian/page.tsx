@@ -165,13 +165,13 @@ export default function KelolaUjianGuruPage() {
     if (selesai.length === 0) { alert('Belum ada siswa yang menyelesaikan ujian ini.'); return }
     if (!confirm(`Salin nilai ${selesai.length} siswa ke Nilai Sumatif (Semester 1)?`)) return
 
-    const rows = selesai.map(s => ({
-      siswa_id: s.siswa_id, kelas_id: detailUjian.kelas_id, mapel_id: detailUjian.mapel_id, guru_id: guruId,
-      jenis: 'Sumatif', nilai: s.nilai_akhir, semester: 1, tahun_ajaran: '2026/2027', sumber: 'CBT',
-    }))
-    const { error } = await supabase.from('nilai_sumatif')
-      .upsert(rows, { onConflict: 'siswa_id,mapel_id,kelas_id,jenis,semester,tahun_ajaran' })
-    alert(error ? 'Gagal menyalin: ' + error.message : `Berhasil disalin ke Nilai & Leger (${selesai.length} siswa).`)
+    const res = await fetch('/api/nilai-sumatif/salin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ujianId: detailUjian.id }),
+    })
+    const hasil = await res.json()
+    alert(!res.ok ? 'Gagal menyalin: ' + hasil?.error : `Berhasil disalin ke Nilai & Leger (${hasil.jumlah} siswa).`)
   }
 
   if (detailUjian) {
