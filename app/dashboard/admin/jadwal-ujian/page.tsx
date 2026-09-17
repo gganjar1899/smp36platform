@@ -127,6 +127,19 @@ export default function JadwalUjianAdminPage() {
 
       const soalRows = form.soalTerpilih.map((soalId, i) => ({ ujian_id: ujianBaru.id, soal_id: soalId, urutan: i + 1 }))
       await supabase.from('ujian_soal').insert(soalRows)
+
+      // Notifikasi ke guru pengampu mapel+kelas ini, biar tau jadwalnya tanpa buka Jadwal Ujian
+      const { data: pengampu } = await supabase.from('guru_mapel')
+        .select('guru_id').eq('kelas_id', kelasId).eq('mapel_id', form.mapelId).eq('tahun_ajaran', '2026/2027')
+      if (pengampu && pengampu.length > 0) {
+        const namaKelas = kelasList.find(k => k.id === kelasId)?.nama ?? ''
+        await supabase.from('notifikasi').insert(pengampu.map((p: any) => ({
+          user_id: p.guru_id,
+          judul: `Jadwal ${JENIS_LABEL[form.jenisUjian]} terbit`,
+          pesan: `${form.judul} untuk kelas ${namaKelas} dijadwalkan ${new Date(form.tanggalMulai).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}`,
+          link: '/dashboard/guru/ujian',
+        })))
+      }
     }
 
     if (gagal > 0) alert(`${gagal} dari ${form.kelasIds.length} kelas gagal dijadwalkan. Coba lagi buat kelas yang gagal.`)

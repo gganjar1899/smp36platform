@@ -10,7 +10,7 @@ const KATEGORI_STYLE: Record<string, { label: string; cls: string }> = {
   umum: { label: '📢 Umum', cls: 'bg-gray-100 text-gray-600' },
 }
 
-export default function PengumumanSiswaPage() {
+export default function PengumumanGuruPage() {
   const [list, setList] = useState<Pengumuman[]>([])
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState('')
@@ -27,7 +27,7 @@ export default function PengumumanSiswaPage() {
     <div className="space-y-5 max-w-3xl">
       <div>
         <h1 className="text-xl font-bold text-gray-800">Pengumuman</h1>
-        <p className="text-sm text-gray-400 mt-0.5">Info dari sekolah buat kamu</p>
+        <p className="text-sm text-gray-400 mt-0.5">Info dari sekolah</p>
       </div>
 
       {loading ? (
