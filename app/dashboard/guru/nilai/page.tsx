@@ -69,6 +69,7 @@ export default function NilaiLegerPage() {
   const [kolomManual, setKolomManual] = useState<{ id: string; label: string; kelompok_formatif: number }[]>([])
   const [nilaiManualMap, setNilaiManualMap] = useState<Record<string, Record<string, number | null>>>({}) // kolomId -> siswaId(uuid) -> nilai
   const [tambahKolomOpen, setTambahKolomOpen] = useState(false)
+  const [menambahKolom, setMenambahKolom] = useState(false)
   const [labelKolomBaru, setLabelKolomBaru] = useState('')
   const [editingKolomId, setEditingKolomId] = useState<string | null>(null)
   const [editLabelValue, setEditLabelValue] = useState('')
@@ -251,19 +252,35 @@ export default function NilaiLegerPage() {
 
   const handleTambahKolom = async () => {
     if (!labelKolomBaru.trim()) return
-    const res = await fetch('/api/nilai-harian/kolom', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'create', kelasNama: kelas, mapelNama: mapel,
-        label: labelKolomBaru, kelompokFormatif: targetFormatif, urutan: kolomManualAktif.length,
-      }),
-    })
-    const hasil = await res.json()
-    if (!res.ok) { alert(hasil?.error ?? 'Gagal menambah kolom.'); return }
-    setKolomManual(prev => [...prev, { id: hasil.kolom.id, label: hasil.kolom.label, kelompok_formatif: hasil.kolom.kelompok_formatif ?? targetFormatif }])
-    setLabelKolomBaru('')
-    setTambahKolomOpen(false)
+    if (menambahKolom) return // cegah klik ganda bikin kolom kembar
+
+    // Tolak nama yang sudah dipakai di kelompok F yang sama, biar gak ada kolom dobel
+    const sudahAda = kolomManualAktif.some(k => k.label.trim().toLowerCase() === labelKolomBaru.trim().toLowerCase())
+    if (sudahAda) {
+      alert(`Kolom "${labelKolomBaru.trim()}" sudah ada di kelompok F${targetFormatif}. Pakai nama lain atau isi kolom yang sudah ada.`)
+      return
+    }
+
+    setMenambahKolom(true)
+    try {
+      const res = await fetch('/api/nilai-harian/kolom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create', kelasNama: kelas, mapelNama: mapel,
+          label: labelKolomBaru, kelompokFormatif: targetFormatif, urutan: kolomManualAktif.length,
+        }),
+      })
+      const hasil = await res.json()
+      if (!res.ok) { alert(hasil?.error ?? 'Gagal menambah kolom.'); return }
+      setKolomManual(prev => [...prev, { id: hasil.kolom.id, label: hasil.kolom.label, kelompok_formatif: hasil.kolom.kelompok_formatif ?? targetFormatif }])
+      setLabelKolomBaru('')
+      setTambahKolomOpen(false)
+    } catch {
+      alert('Gagal menambah kolom: koneksi terputus.')
+    } finally {
+      setMenambahKolom(false)
+    }
   }
 
   const handleHapusKolom = async (kolomId: string) => {
@@ -293,13 +310,32 @@ export default function NilaiLegerPage() {
 
   const handleSimpanNilaiManual = async (kolomId: string, siswaNisn: string, nilai: number | null) => {
     const siswaId = userIdByNisn[siswaNisn]
-    if (!siswaId) return
+    if (!siswaId) {
+      // Dulu di sini cuma `return` diam-diam — guru ngetik nilai, gak ada pesan apa-apa,
+      // tapi nilainya gak pernah tersimpan. Sekarang dikasih tahu jelas.
+      alert(`Nilai TIDAK tersimpan!\n\nData siswa dengan NISN ${siswaNisn} belum tersambung ke akun login.\nHubungi admin untuk cek data siswa ini.`)
+      return
+    }
+
+    const nilaiSebelumnya = nilaiManualMap[kolomId]?.[siswaId] ?? null
     setNilaiManualMap(prev => ({ ...prev, [kolomId]: { ...prev[kolomId], [siswaId]: nilai } }))
-    await fetch('/api/nilai-harian/nilai', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kolomId, siswaId, nilai }),
-    })
+
+    try {
+      const res = await fetch('/api/nilai-harian/nilai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kolomId, siswaId, nilai }),
+      })
+      if (!res.ok) {
+        const hasil = await res.json().catch(() => null)
+        // Balikin lagi ke nilai lama, biar layar gak nunjukin angka yang sebenarnya gagal disimpan
+        setNilaiManualMap(prev => ({ ...prev, [kolomId]: { ...prev[kolomId], [siswaId]: nilaiSebelumnya } }))
+        alert('Nilai TIDAK tersimpan: ' + (hasil?.error ?? 'koneksi bermasalah, coba lagi.'))
+      }
+    } catch {
+      setNilaiManualMap(prev => ({ ...prev, [kolomId]: { ...prev[kolomId], [siswaId]: nilaiSebelumnya } }))
+      alert('Nilai TIDAK tersimpan: koneksi terputus. Cek internet lalu isi ulang.')
+    }
   }
 
   // Kolom manual yang sekelompok sama F yang lagi aktif — inilah yang bikin data F1
@@ -750,7 +786,7 @@ export default function NilaiLegerPage() {
                               <input autoFocus value={labelKolomBaru} onChange={e => setLabelKolomBaru(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && handleTambahKolom()}
                                 placeholder="Nama kolom" className="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-sm font-normal text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                              <button onClick={handleTambahKolom} className="w-6 h-6 flex items-center justify-center rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 text-xs font-bold">✓</button>
+                              <button onClick={handleTambahKolom} disabled={menambahKolom} className="w-6 h-6 flex items-center justify-center rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 text-xs font-bold disabled:opacity-40">{menambahKolom ? '…' : '✓'}</button>
                               <button onClick={() => { setTambahKolomOpen(false); setLabelKolomBaru('') }} className="w-6 h-6 flex items-center justify-center rounded-lg bg-gray-100 text-gray-400 hover:bg-gray-200 text-xs">✕</button>
                             </div>
                           ) : (
