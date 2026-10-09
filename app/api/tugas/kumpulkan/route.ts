@@ -16,7 +16,11 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const tugasId: string | undefined = body?.tugasId;
   const catatan: string | null = body?.catatan || null;
-  const fileJawaban: { nama: string; url: string }[] = Array.isArray(body?.fileJawaban) ? body.fileJawaban : [];
+  // Hanya terima entri file yang bentuknya benar (nama + url https), maksimal 10 file per pengumpulan.
+  const fileJawaban: { nama: string; url: string }[] = (Array.isArray(body?.fileJawaban) ? body.fileJawaban : [])
+    .filter((f: AnyRow) => f && typeof f.nama === "string" && typeof f.url === "string" && /^https:\/\//.test(f.url))
+    .slice(0, 10)
+    .map((f: AnyRow) => ({ nama: String(f.nama).slice(0, 200), url: f.url }));
 
   if (!tugasId) {
     return NextResponse.json({ error: "tugasId wajib diisi." }, { status: 400 });

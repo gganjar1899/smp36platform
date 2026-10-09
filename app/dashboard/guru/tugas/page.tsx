@@ -8,6 +8,23 @@ const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+// Link bawaan Supabase Storage membuka file di tab baru (PDF/gambar hanya tampil, tidak terunduh).
+// Parameter ?download=<nama> membuat server mengirim header "attachment" sehingga file langsung terunduh.
+function unduhUrl(url: string, nama: string) {
+  return `${url}${url.includes('?') ? '&' : '?'}download=${encodeURIComponent(nama)}`
+}
+
+function FileLink({ f }: { f: { nama: string; url: string } }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
+      <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all">
+        📎 {f.nama}
+      </a>
+      <a href={unduhUrl(f.url, f.nama)} className="text-[#1a6b3a] font-semibold hover:underline shrink-0">⬇ Unduh</a>
+    </span>
+  )
+}
+
 type Opsi = { id: string; nama: string }
 type Tugas = {
   id: string; judul: string; deskripsi: string | null; deadline: string
@@ -298,10 +315,7 @@ export default function KelolaTugasPage() {
                       {(p.file_jawaban || []).length > 0 && (
                         <div className="flex gap-2 mb-2 flex-wrap">
                           {(p.file_jawaban || []).map((f, i) => (
-                            <a key={i} href={f.url} target="_blank" rel="noopener noreferrer"
-                              className="text-xs text-blue-500 hover:underline flex items-center gap-1">
-                              📎 {f.nama}
-                            </a>
+                            <FileLink key={i} f={f} />
                           ))}
                         </div>
                       )}

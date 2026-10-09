@@ -8,6 +8,25 @@ const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+const MAKS_FILE = 10
+
+// Link bawaan Supabase Storage membuka file di tab baru (PDF/gambar hanya tampil, tidak terunduh).
+// Parameter ?download=<nama> membuat server mengirim header "attachment" sehingga file langsung terunduh.
+function unduhUrl(url: string, nama: string) {
+  return `${url}${url.includes('?') ? '&' : '?'}download=${encodeURIComponent(nama)}`
+}
+
+function FileLink({ f, ket }: { f: { nama: string; url: string }; ket?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs bg-white border border-gray-200 rounded-lg px-2 py-1">
+      <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all">
+        📎 {f.nama}{ket ? ` (${ket})` : ''}
+      </a>
+      <a href={unduhUrl(f.url, f.nama)} className="text-[#1a6b3a] font-semibold hover:underline shrink-0">⬇ Unduh</a>
+    </span>
+  )
+}
+
 type Tugas = {
   id: string; judul: string; deskripsi: string | null; deadline: string; poin: number
   mapel_nama?: string; file_lampiran: { nama: string; url: string }[]
@@ -26,7 +45,7 @@ export default function TugasSiswaPage() {
   const [error, setError] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [catatan, setCatatan] = useState<Record<string, string>>({})
-  const [file, setFile] = useState<Record<string, File | null>>({})
+  const [file, setFile] = useState<Record<string, File[]>>({})
   const [submitting, setSubmitting] = useState<string | null>(null)
 
   const fetchAll = useCallback(async () => {
@@ -66,14 +85,25 @@ export default function TugasSiswaPage() {
   async function handleKumpulkan(t: Tugas) {
     setSubmitting(t.id)
     try {
-      let fileJawaban: { nama: string; url: string }[] = []
-      const f = file[t.id]
-      if (f) {
-        const path = `tugas-jawaban/${siswaId}/${t.id}-${Date.now()}-${f.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`
-        const { error: upErr } = await supabase.storage.from('dokumen-ajar').upload(path, f)
-        if (upErr) throw new Error('Gagal upload: ' + upErr.message)
-        const { data: urlData } = supabase.storage.from('dokumen-ajar').getPublicUrl(path)
-        fileJawaban = [{ nama: f.name, url: urlData.publicUrl }]
+      const fileJawaban: { nama: string; url: string }[] = []
+      const files = file[t.id] ?? []
+      if (files.length > 0) {
+        const terunggah: string[] = []
+        try {
+          for (let i = 0; i < files.length; i++) {
+            const f = files[i]
+            const path = `tugas-jawaban/${siswaId}/${t.id}-${Date.now()}-${i}-${f.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`
+            const { error: upErr } = await supabase.storage.from('dokumen-ajar').upload(path, f)
+            if (upErr) throw new Error(`Gagal upload ${f.name}: ${upErr.message}`)
+            terunggah.push(path)
+            const { data: urlData } = supabase.storage.from('dokumen-ajar').getPublicUrl(path)
+            fileJawaban.push({ nama: f.name, url: urlData.publicUrl })
+          }
+        } catch (e) {
+          // Kalau ada yang gagal, bersihkan file yang sudah terlanjur terunggah supaya tidak jadi sampah
+          if (terunggah.length > 0) await supabase.storage.from('dokumen-ajar').remove(terunggah)
+          throw e
+        }
       } else if (!catatan[t.id]) {
         alert('Upload file jawaban atau isi catatan dulu sebelum mengumpulkan.')
         setSubmitting(null)
@@ -89,6 +119,7 @@ export default function TugasSiswaPage() {
       const hasil = await res.json()
       if (!res.ok) throw new Error(hasil?.error ?? 'Gagal mengumpulkan tugas.')
       if (hasil.pengumpulan) setPengumpulanMap(prev => ({ ...prev, [t.id]: hasil.pengumpulan }))
+      setFile(prev => ({ ...prev, [t.id]: [] }))
       setExpanded(null)
     } catch (err: any) {
       alert('Gagal mengumpulkan: ' + err.message)
@@ -154,7 +185,7 @@ export default function TugasSiswaPage() {
                     {t.file_lampiran?.length > 0 && (
                       <div className="flex gap-2 flex-wrap">
                         {t.file_lampiran.map((f, i) => (
-                          <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline">📎 {f.nama} (dari guru)</a>
+                          <FileLink key={i} f={f} ket="dari guru" />
                         ))}
                       </div>
                     )}
@@ -174,10 +205,26 @@ export default function TugasSiswaPage() {
                         onChange={e => setCatatan(prev => ({ ...prev, [t.id]: e.target.value }))}
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs resize-none focus:outline-none focus:ring-2 focus:ring-green-500/20"
                       />
-                      <input type="file" onChange={e => setFile(prev => ({ ...prev, [t.id]: e.target.files?.[0] ?? null }))}
+                      <input type="file" multiple
+                        onChange={e => {
+                          const dipilih = Array.from(e.target.files ?? [])
+                          if (dipilih.length > MAKS_FILE) {
+                            alert(`Maksimal ${MAKS_FILE} file sekaligus.`)
+                            e.target.value = ''
+                            setFile(prev => ({ ...prev, [t.id]: [] }))
+                            return
+                          }
+                          setFile(prev => ({ ...prev, [t.id]: dipilih }))
+                        }}
                         className="w-full text-xs" />
-                      {p?.file_jawaban?.length > 0 && (
-                        <p className="text-[11px] text-gray-400">File tersimpan: {p.file_jawaban.map(f => f.nama).join(', ')}</p>
+                      <p className="text-[11px] text-gray-400">Boleh semua jenis file (dokumen, foto, video, dll.), maksimal {MAKS_FILE} file.</p>
+                      {(p?.file_jawaban?.length ?? 0) > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-[11px] text-gray-400">File yang sudah kamu kumpulkan (memilih file baru lalu "Kumpul Ulang" akan menggantikannya):</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {p!.file_jawaban.map((f, i) => <FileLink key={i} f={f} />)}
+                          </div>
+                        </div>
                       )}
                       <button
                         onClick={() => handleKumpulkan(t)}
