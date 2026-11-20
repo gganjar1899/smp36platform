@@ -2,7 +2,21 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
-import * as XLSX from 'xlsx'
+import { simpanExcelBerKop, kopHtml } from '@/lib/kop-sekolah'
+
+// Supabase membatasi 1000 baris per permintaan; ambil bertahap sampai habis agar rekap tidak terpotong.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function ambilSemuaBaris(buat: () => any): Promise<any[]> {
+  const hasil: any[] = []
+  for (let dari = 0; ; dari += 1000) {
+    const { data, error } = await buat().order('id', { ascending: true }).range(dari, dari + 999)
+    if (error || !data) break
+    hasil.push(...data)
+    if (data.length < 1000) break
+  }
+  return hasil
+}
+
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -142,14 +156,16 @@ export default function RekapAbsensiGuruPage() {
       .filter(Boolean)
       .sort((a: any, b: any) => a.nama.localeCompare(b.nama))
 
-    let query = supabase
-      .from('absensi_mapel')
-      .select('siswa_id, status, tanggal')
-      .eq('kelas_id', selectedKelas)
-      .gte('tanggal', mulai)
-      .lte('tanggal', selesai)
-    if (selectedMapel !== 'semua') query = query.eq('mapel_id', selectedMapel)
-    const { data: absenData } = await query
+    const absenData = await ambilSemuaBaris(() => {
+      let query = supabase
+        .from('absensi_mapel')
+        .select('siswa_id, status, tanggal')
+        .eq('kelas_id', selectedKelas)
+        .gte('tanggal', mulai)
+        .lte('tanggal', selesai)
+      if (selectedMapel !== 'semua') query = query.eq('mapel_id', selectedMapel)
+      return query
+    })
 
     const map: Record<string, RekapSiswa> = {}
     ;(siswaData || []).forEach((s: any) => {
@@ -198,14 +214,14 @@ export default function RekapAbsensiGuruPage() {
       .filter(Boolean)
       .sort((a: any, b: any) => a.nama.localeCompare(b.nama))
 
-    const { data: absenData } = await supabase
+    const absenData = await ambilSemuaBaris(() => supabase
       .from('absensi_mapel')
       .select('siswa_id, status, tanggal, pertemuan_ke')
       .eq('kelas_id', selectedKelas)
       .eq('mapel_id', selectedMapel)
       .gte('tanggal', mulai)
       .lte('tanggal', selesai)
-      .order('pertemuan_ke')
+      .order('pertemuan_ke'))
 
     // Daftar pertemuan unik yang benar-benar ada datanya pada periode ini
     const pertemuanMap = new Map<number, string>()
@@ -249,14 +265,12 @@ export default function RekapAbsensiGuruPage() {
   const namaKelas = kelasList.find(k => k.id === selectedKelas)?.nama_rombel ?? ''
   const namaMapel = selectedMapel === 'semua' ? 'Semua Mapel (Gabungan)' : (mapelList.find(m => m.id === selectedMapel)?.nama_mapel ?? '')
 
-  const handleExportExcel = () => {
-    const wb = XLSX.utils.book_new()
+  const handleExportExcel = async () => {
     const periode = getPeriodeLabel()
     const today = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
 
     const headerRows = [
       ['REKAP ABSENSI SISWA'],
-      ['SMP NEGERI 36 BANDUNG'],
       [''],
       ['Kelas', ':', namaKelas],
       ['Mata Pelajaran', ':', namaMapel],
@@ -285,24 +299,23 @@ export default function RekapAbsensiGuruPage() {
     ]
 
     const allRows = [...headerRows, tableHeader, ...tableData, totalRow, ...ttdRows]
-    const ws = XLSX.utils.aoa_to_sheet(allRows)
-    ws['!cols'] = [
-      { wch: 4 }, { wch: 14 }, { wch: 28 }, { wch: 7 }, { wch: 7 },
-      { wch: 7 }, { wch: 7 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 12 },
-    ]
-
-    XLSX.utils.book_append_sheet(wb, ws, 'Rekap Absensi')
-    XLSX.writeFile(wb, `Rekap-Absensi-${namaKelas}-${namaMapel}-${periode.replace(/ /g, '-')}.xlsx`)
+    await simpanExcelBerKop({
+      rows: allRows,
+      sheetName: 'Rekap Absensi',
+      fileName: `Rekap-Absensi-${namaKelas}-${namaMapel}-${periode.replace(/ /g, '-')}.xlsx`,
+      cols: [
+        { wch: 4 }, { wch: 14 }, { wch: 28 }, { wch: 7 }, { wch: 7 },
+        { wch: 7 }, { wch: 7 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 12 },
+      ],
+    })
   }
 
-  const handleExportExcelMatrix = () => {
-    const wb = XLSX.utils.book_new()
+  const handleExportExcelMatrix = async () => {
     const periode = getPeriodeLabel()
     const today = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
 
     const headerRows = [
       ['REKAP ABSENSI SISWA PER PERTEMUAN'],
-      ['SMP NEGERI 36 BANDUNG'],
       [''],
       ['Kelas', ':', namaKelas],
       ['Mata Pelajaran', ':', namaMapel],
@@ -327,11 +340,12 @@ export default function RekapAbsensiGuruPage() {
     ]
 
     const allRows = [...headerRows, tableHeader, ...tableData, ...ttdRows]
-    const ws = XLSX.utils.aoa_to_sheet(allRows)
-    ws['!cols'] = [{ wch: 4 }, { wch: 14 }, { wch: 28 }, ...pertemuanList.map(() => ({ wch: 10 }))]
-
-    XLSX.utils.book_append_sheet(wb, ws, 'Per Pertemuan')
-    XLSX.writeFile(wb, `Absensi-PerPertemuan-${namaKelas}-${namaMapel}-${periode.replace(/ /g, '-')}.xlsx`)
+    await simpanExcelBerKop({
+      rows: allRows,
+      sheetName: 'Per Pertemuan',
+      fileName: `Absensi-PerPertemuan-${namaKelas}-${namaMapel}-${periode.replace(/ /g, '-')}.xlsx`,
+      cols: [{ wch: 4 }, { wch: 14 }, { wch: 28 }, ...pertemuanList.map(() => ({ wch: 10 }))],
+    })
   }
 
   // Cetak / PDF -- pakai print dialog browser (Simpan sebagai PDF), tanpa dependency tambahan
@@ -376,8 +390,8 @@ export default function RekapAbsensiGuruPage() {
         @media print { body { padding: 8px; } }
       </style></head>
       <body>
-        <h1>REKAP ABSENSI SISWA${tampilan === 'matrix' ? ' PER PERTEMUAN' : ''}</h1>
-        <h2>SMP Negeri 36 Bandung</h2>
+        ${kopHtml()}
+        <h1 style="text-align:center;margin:0 0 12px">REKAP ABSENSI SISWA${tampilan === 'matrix' ? ' PER PERTEMUAN' : ''}</h1>
         <div class="info">
           <div><b>Kelas:</b> ${namaKelas}</div>
           <div><b>Mata Pelajaran:</b> ${namaMapel}</div>

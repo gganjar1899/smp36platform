@@ -128,14 +128,25 @@ export default function AbsensiPage() {
   // dan nomor pertemuan berikutnya otomatis tersaran.
   const fetchRiwayat = async () => {
     if (!selectedKelas || !selectedMapel) { setRiwayat([]); return }
-    const { data } = await supabase
-      .from('absensi_mapel')
-      .select('pertemuan_ke, tanggal')
-      .eq('kelas_id', selectedKelas)
-      .eq('mapel_id', selectedMapel)
-      .order('pertemuan_ke', { ascending: true })
+    // PENTING: Supabase membatasi 1000 baris per permintaan. Satu pertemuan = 1 baris per siswa,
+    // jadi kelas yang sudah >29 pertemuan terpotong dan nomor pertemuan "macet". Ambil bertahap sampai habis.
+    const data: any[] = []
+    for (let dari = 0; ; dari += 1000) {
+      const { data: potongan, error } = await supabase
+        .from('absensi_mapel')
+        .select('pertemuan_ke, tanggal')
+        .eq('kelas_id', selectedKelas)
+        .eq('mapel_id', selectedMapel)
+        .order('pertemuan_ke', { ascending: true })
+        .order('tanggal', { ascending: true })
+        .order('id', { ascending: true })
+        .range(dari, dari + 999)
+      if (error || !potongan) break
+      data.push(...potongan)
+      if (potongan.length < 1000) break
+    }
 
-    if (data) {
+    if (data.length) {
       const unik = Array.from(
         new Map(data.map((d: any) => [d.pertemuan_ke, d])).values()
       ) as RiwayatPertemuan[]
